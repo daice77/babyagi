@@ -8,8 +8,9 @@ from transformers import GPT2TokenizerFast
 from dotenv import load_dotenv
 import time
 
-# Heavily derived from OpenAi's cookbook example
+MAX_TOKENS = 4096   # model max token is 8192, but we need to leave some space for the query
 
+# Heavily derived from OpenAi's cookbook example
 load_dotenv()
 
 # the dir is the ./playground directory
@@ -26,6 +27,8 @@ class Embeddings:
         self.SEPARATOR = "\n* "
 
         self.tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
+        self.tokenizer.model_max_length = MAX_TOKENS
+
         self.separator_len = len(self.tokenizer.tokenize(self.SEPARATOR))
 
     def compute_repository_embeddings(self):
@@ -51,20 +54,76 @@ class Embeddings:
         info = self.extract_info(REPOSITORY_PATH)
         self.save_info_to_csv(info)
 
-        df = pd.read_csv(os.path.join(self.workspace_path, 'playground_data\\repository_info.csv'))
+        df = pd.read_csv(os.path.join(self.workspace_path, 'playground_data', 'repository_info.csv'))
         df = df.set_index(["filePath", "lineCoverage"])
         self.df = df
         context_embeddings = self.compute_doc_embeddings(df)
-        self.save_doc_embeddings_to_csv(context_embeddings, df, os.path.join(self.workspace_path, 'playground_data\\doc_embeddings.csv'))
+        self.save_doc_embeddings_to_csv(context_embeddings, df, os.path.join(self.workspace_path, 'playground_data', 'doc_embeddings.csv'))
 
         try:
-            self.document_embeddings = self.load_embeddings(os.path.join(self.workspace_path, 'playground_data\\doc_embeddings.csv'))
+            self.document_embeddings = self.load_embeddings(os.path.join(self.workspace_path, 'playground_data', 'doc_embeddings.csv'))
         except:
             pass
 
     # Extract information from files in the repository in chunks
     # Return a list of [filePath, lineCoverage, chunkContent]
     def extract_info(self, REPOSITORY_PATH):
+        # Initialize an empty list to store the information
+        info = []
+        
+        # Iterate through the files in the repository
+        for root, dirs, files in os.walk(REPOSITORY_PATH):
+            for file in files:
+                file_path = os.path.join(root, file)
+
+                # Read the contents of the file
+                with open(file_path, "r", encoding="utf-8") as f:
+                    try:
+                        contents = f.read()
+                    except:
+                        continue
+                    
+                    # Split the contents into lines
+                    lines = contents.split("\n")
+                    # Ignore empty lines
+                    lines = [line for line in lines if line.strip()]
+                    
+                    # We'll build chunks until the number of tokens exceeds the model's limit
+                    chunks = []
+                    current_chunk = []
+                    current_chunk_tokens = 0
+                    
+                    for line in lines:
+                        num_tokens_in_line = len(self.tokenizer.tokenize(line))
+                        
+                        # If adding this line doesn't exceed the max token limit, add it to the current chunk
+                        if (current_chunk_tokens + num_tokens_in_line) <= self.tokenizer.model_max_length:
+                            current_chunk.append(line)
+                            current_chunk_tokens += num_tokens_in_line
+                        else:
+                            # If it exceeds, finalize the current chunk and start a new one
+                            chunks.append(current_chunk)
+                            current_chunk = [line]
+                            current_chunk_tokens = num_tokens_in_line
+                    
+                    # Don't forget to add the last chunk if it's not empty
+                    if current_chunk:
+                        chunks.append(current_chunk)
+                    
+                    # Now we handle chunks just like in your original code
+                    for i, chunk in enumerate(chunks):
+                        chunk = "\n".join(chunk)
+                        first_line = i * len(chunk) + 1
+                        last_line = first_line + len(chunk.split("\n")) - 1
+                        line_coverage = (first_line, last_line)
+                        info.append((os.path.join(root, file), line_coverage, chunk))
+                
+        # Return the list of information
+        return info
+
+    # Extract information from files in the repository in chunks
+    # Return a list of [filePath, lineCoverage, chunkContent]
+    def extract_info_old(self, REPOSITORY_PATH):
         # Initialize an empty list to store the information
         info = []
         
@@ -108,7 +167,7 @@ class Embeddings:
     def save_info_to_csv(self, info):
         # Open a CSV file for writing
         os.makedirs(os.path.join(self.workspace_path, "playground_data"), exist_ok=True)
-        with open(os.path.join(self.workspace_path, 'playground_data\\repository_info.csv'), "w", newline="") as csvfile:
+        with open(os.path.join(self.workspace_path, 'playground_data', 'repository_info.csv'), "w", newline="") as csvfile:
             # Create a CSV writer
             writer = csv.writer(csvfile)
             # Write the header row
