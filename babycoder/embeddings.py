@@ -193,11 +193,21 @@ class Embeddings:
         return selected_chunks
 
     def get_embedding(self, text: str, model: str) -> list[float]:
-        result = openai.Embedding.create(
-        model=model,
-        input=text
-        )
-        return result["data"][0]["embedding"]
+        global openai_calls_retried
+
+        try:
+            result = openai.Embedding.create(
+            model=model,
+            input=text
+            )
+            openai_calls_retried = 0
+            return result["data"][0]["embedding"]
+        except Exception as e:
+            # try again
+            if openai_calls_retried < max_openai_calls_retries:
+                openai_calls_retried += 1
+                print(f"Error calling OpenAI embeddings. Retrying {openai_calls_retried} of {max_openai_calls_retries}...")
+                return self.get_embedding(text, model)
 
     def get_doc_embedding(self, text: str) -> list[float]:
         return self.get_embedding(text, self.DOC_EMBEDDINGS_MODEL)
