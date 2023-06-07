@@ -12,6 +12,7 @@ from pydub import AudioSegment
 import simpleaudio as sa
 import numpy as np
 import tempfile
+import shutil
 
 from embeddings import Embeddings
 
@@ -35,10 +36,6 @@ os_version = platform.release()
 openai_calls_retried = 0
 max_openai_calls_retries = 3
 
-embeddings = Embeddings(current_directory)
-embeddings.compute_repository_embeddings()
-
-
 # Set API Keys
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 assert OPENAI_API_KEY, "OPENAI_API_KEY environment variable is missing from .env"
@@ -50,7 +47,40 @@ assert OPENAI_API_MODEL, "OPENAI_API_MODEL environment variable is missing from 
 OPENAI_API_MODEL_SIMPLE = os.getenv("OPENAI_API_MODEL_SIMPLE", "gpt-3.5-turbo")
 assert OPENAI_API_MODEL_SIMPLE, "OPENAI_API_MODEL_SIMPLE environment variable is missing from .env"
 
+# enable/disable text to speech
 TTS = os.getenv("TTS", True)
+
+# clear embeddings index and re-index all playground files during startup
+RESET_EMBEDDINGS_INDEX = os.getenv("RESET_EMBEDDINGS_INDEX", False)
+
+if RESET_EMBEDDINGS_INDEX:
+    print(
+        f"\033[91m\033[1m"
+        + "\n*****RESET AND RECREATE EMBEDDINGS INDEX*****"
+        + "\033[0m\033[0m"
+    )
+    try:
+        playground_data_path = os.path.join(current_directory, 'playground_data')
+
+        # Delete the contents of the playground_data directory but not the directory itself
+        # This is to ensure that we don't have any old data lying around
+        for filename in os.listdir(playground_data_path):
+            file_path = os.path.join(playground_data_path, filename)
+
+            try:
+                if os.path.isfile(file_path) or os.path.islink(file_path):
+                    os.unlink(file_path)
+                elif os.path.isdir(file_path):
+                    shutil.rmtree(file_path)
+            except Exception as e:
+                print(f"Failed to delete {file_path}. Reason: {str(e)}")
+    except Exception as e:
+        print(f"Error: {str(e)}")
+
+
+    embeddings = Embeddings(current_directory)
+    embeddings.compute_repository_embeddings()
+
 
 if "gpt-4" in OPENAI_API_MODEL.lower():
     print(
