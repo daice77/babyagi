@@ -7,6 +7,11 @@ import numpy as np
 from transformers import GPT2TokenizerFast
 from dotenv import load_dotenv
 import time
+from checksums import calculate_checksums, compare_checksums, persist_checksums, load_checksums
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 MAX_TOKENS = 4096   # model max token is 8192, but we need to leave some space for the query
 
@@ -31,143 +36,140 @@ class Embeddings:
 
         self.separator_len = len(self.tokenizer.tokenize(self.SEPARATOR))
 
+        self.max_openai_calls_retries = 3
+
+    def remove_changed_or_deleted(compare, workspace_path):
+        # Load CSV files
+        repo_info_file = os.path.join(workspace_path, 'playground_data', 'repository_info.csv')
+        embeddings_file = os.path.join(workspace_path, 'playground_data', 'doc_embeddings.csv')
+
+        df_repo_info = pd.read_csv(repo_info_file)
+        df_embeddings = pd.read_csv(embeddings_file)
+
+        # Set indexes for easier row dropping
+        df_repo_info = df_repo_info.set_index(["filePath", "lineCoverage"])
+        df_embeddings = df_embeddings.set_index(["filePath", "lineCoverage"])
+
+        # Remove stored embeddings for files that have changed or are deleted
+        for changed_file in compare['changed']:
+            # Drop rows from repository_info.csv
+            if changed_file in df_repo_info.index:
+                df_repo_info = df_repo_info.drop(changed_file)
+
+            # Drop rows from doc_embeddings.csv
+            if changed_file in df_embeddings.index:
+                df_embeddings = df_embeddings.drop(changed_file)
+
+        # Save modified dataframes back to CSV files
+        df_repo_info.to_csv(repo_info_file)
+        df_embeddings.to_csv(embeddings_file)
+        
     def compute_repository_embeddings(self):
-        try:
-            playground_data_path = os.path.join(self.workspace_path, 'playground_data')
+        # Load stored checksums and calculate checksums for the current repository  
+        old_checksums = load_checksums(os.path.join(self.workspace_path, 'playground_data', 'checksums.json'))
+        current_checksums = calculate_checksums(REPOSITORY_PATH)
 
-            # Delete the contents of the playground_data directory but not the directory itself
-            # This is to ensure that we don't have any old data lying around
-            for filename in os.listdir(playground_data_path):
-                file_path = os.path.join(playground_data_path, filename)
+        compare = compare_checksums(REPOSITORY_PATH, old_checksums)
 
-                try:
-                    if os.path.isfile(file_path) or os.path.islink(file_path):
-                        os.unlink(file_path)
-                    elif os.path.isdir(file_path):
-                        shutil.rmtree(file_path)
-                except Exception as e:
-                    print(f"Failed to delete {file_path}. Reason: {str(e)}")
-        except Exception as e:
-            print(f"Error: {str(e)}")
+        # remove stored embeddings for files that have changed or are deleted
+        self.remove_changed_or_deleted(compare, self.workspace_path)
 
-        # extract and save info to csv
-        info = self.extract_info(REPOSITORY_PATH)
-        self.save_info_to_csv(info)
+        # Extract information from files in the repository in chunks
+        info_and_last_file["last_file_processed"] = None
+        while True:
+            info_and_last_file = self.extract_info(REPOSITORY_PATH, ignore_files=compare['unchanged'], continue_from=info_and_last_file["last_file_processed"])
+            self.save_info_to_csv(info_and_last_file["info"])
+            self.save_info_to_csv(info_and_last_file["info"], filename=os.path.join(self.workspace_path, 'playground_data', 'repository_info_current_chunk.csv'))
 
-        df = pd.read_csv(os.path.join(self.workspace_path, 'playground_data', 'repository_info.csv'))
-        df = df.set_index(["filePath", "lineCoverage"])
-        self.df = df
-        context_embeddings = self.compute_doc_embeddings(df)
-        self.save_doc_embeddings_to_csv(context_embeddings, df, os.path.join(self.workspace_path, 'playground_data', 'doc_embeddings.csv'))
+            df = pd.read_csv(os.path.join(self.workspace_path, 'playground_data', 'repository_info_current_chunk.csv'))
+            df = df.set_index(["filePath", "lineCoverage"])
+            self.df = df
+            context_embeddings = self.compute_doc_embeddings(df)
+            self.save_doc_embeddings_to_csv(context_embeddings, df, os.path.join(self.workspace_path, 'playground_data', 'doc_embeddings.csv'))
 
+            if info_and_last_file["last_file_processed"] is None:
+                break
+            
+        persist_checksums(current_checksums, os.path.join(self.workspace_path, 'playground_data', 'checksums.json'))
         try:
             self.document_embeddings = self.load_embeddings(os.path.join(self.workspace_path, 'playground_data', 'doc_embeddings.csv'))
         except:
             pass
 
-    # Extract information from files in the repository in chunks
-    # Return a list of [filePath, lineCoverage, chunkContent]
-    def extract_info(self, REPOSITORY_PATH):
-        # Initialize an empty list to store the information
-        info = []
-        
-        # Iterate through the files in the repository
-        for root, dirs, files in os.walk(REPOSITORY_PATH):
-            for file in files:
-                file_path = os.path.join(root, file)
-
-                # Read the contents of the file
-                with open(file_path, "r", encoding="utf-8") as f:
-                    try:
-                        contents = f.read()
-                    except:
-                        continue
-                    
-                    # Split the contents into lines
-                    lines = contents.split("\n")
-                    # Ignore empty lines
-                    lines = [line for line in lines if line.strip()]
-                    
-                    # We'll build chunks until the number of tokens exceeds the model's limit
-                    chunks = []
-                    current_chunk = []
-                    current_chunk_tokens = 0
-                    
-                    for line in lines:
-                        num_tokens_in_line = len(self.tokenizer.tokenize(line))
-                        
-                        # If adding this line doesn't exceed the max token limit, add it to the current chunk
-                        if (current_chunk_tokens + num_tokens_in_line) <= self.tokenizer.model_max_length:
-                            current_chunk.append(line)
-                            current_chunk_tokens += num_tokens_in_line
-                        else:
-                            # If it exceeds, finalize the current chunk and start a new one
-                            chunks.append(current_chunk)
-                            current_chunk = [line]
-                            current_chunk_tokens = num_tokens_in_line
-                    
-                    # Don't forget to add the last chunk if it's not empty
-                    if current_chunk:
-                        chunks.append(current_chunk)
-                    
-                    # Now we handle chunks just like in your original code
-                    for i, chunk in enumerate(chunks):
-                        chunk = "\n".join(chunk)
-                        first_line = i * len(chunk) + 1
-                        last_line = first_line + len(chunk.split("\n")) - 1
-                        line_coverage = (first_line, last_line)
-                        info.append((os.path.join(root, file), line_coverage, chunk))
-                
-        # Return the list of information
-        return info
 
     # Extract information from files in the repository in chunks
     # Return a list of [filePath, lineCoverage, chunkContent]
-    def extract_info_old(self, REPOSITORY_PATH):
+    def extract_info(self, REPOSITORY_PATH, ignore_files: list, continue_from = None):
         # Initialize an empty list to store the information
         info = []
+
+        tokens_count = 0
+        max_exceeded = False
         
         LINES_PER_CHUNK = 60
 
         # Iterate through the files in the repository
         for root, dirs, files in os.walk(REPOSITORY_PATH):
             for file in files:
-                file_path = os.path.join(root, file)
 
-                # Read the contents of the file
-                with open(file_path, "r", encoding="utf-8") as f:
-                    try:
-                        contents = f.read()
-                    except:
-                        continue
-                
-                # Split the contents into lines
-                lines = contents.split("\n")
-                # Ignore empty lines
-                lines = [line for line in lines if line.strip()]
-                # Split the lines into chunks of LINES_PER_CHUNK lines
-                chunks = [
-                        lines[i:i+LINES_PER_CHUNK]
-                        for i in range(0, len(lines), LINES_PER_CHUNK)
-                    ]
-                # Iterate through the chunks
-                for i, chunk in enumerate(chunks):
-                    # Join the lines in the chunk back into a single string
-                    chunk = "\n".join(chunk)
-                    # Get the first and last line numbers
-                    first_line = i * LINES_PER_CHUNK + 1
-                    last_line = first_line + len(chunk.split("\n")) - 1
-                    line_coverage = (first_line, last_line)
-                    # Add the file path, line coverage, and content to the list
-                    info.append((os.path.join(root, file), line_coverage, chunk))
+                if (not max_exceeded) and (file not in ignore_files):
+                    file_path = os.path.join(root, file)
+
+                    if (file_path == continue_from) or (continue_from is None):
+                        continue_from = None
+
+                        # Read the contents of the file
+                        with open(file_path, "r", encoding="utf-8") as f:
+                            try:
+                                contents = f.read()
+                            except:
+                                continue
+                        
+                        # Split the contents into lines
+                        lines = contents.split("\n")
+                        # Ignore empty lines
+                        lines = [line for line in lines if line.strip()]
+                        # Split the lines into chunks of LINES_PER_CHUNK lines
+                        chunks = [
+                                lines[i:i+LINES_PER_CHUNK]
+                                for i in range(0, len(lines), LINES_PER_CHUNK)
+                            ]
+                        # Iterate through the chunks
+                        for i, chunk in enumerate(chunks):
+                            # Join the lines in the chunk back into a single string
+                            chunk = "\n".join(chunk)
+                            # Get the first and last line numbers
+                            first_line = i * LINES_PER_CHUNK + 1
+                            last_line = first_line + len(chunk.split("\n")) - 1
+                            line_coverage = (first_line, last_line)
+                            # Add the file path, line coverage, and content to the list
+                            info.append((os.path.join(root, file), line_coverage, chunk))
+                            tokens_count += len(self.tokenizer.tokenize(chunk))
+                            if tokens_count > MAX_TOKENS:
+                                max_exceeded = True
+                        
+                        last_file_processed = file_path
+                    else:
+                        logger.info(f"Skipping file {file_path} - already processed or not in the list of unchanged files")
+                else:
+                    logger.info(f"Last processed file {file_path}, skipping rest because max token count exceeded ({tokens_count} > {MAX_TOKENS}))")
+                    return {"info": info, "last_file_processed": last_file_processed}
             
         # Return the list of information
-        return info
+        return {"info": info, "last_file_processed": None}
 
-    def save_info_to_csv(self, info):
+    def save_info_to_csv(self, info, filename = None):
         # Open a CSV file for writing
         os.makedirs(os.path.join(self.workspace_path, "playground_data"), exist_ok=True)
-        with open(os.path.join(self.workspace_path, 'playground_data', 'repository_info.csv'), "w", newline="") as csvfile:
+        
+        if not filename:
+            mode = "w"
+            filename = os.path.join(self.workspace_path, 'playground_data', 'repository_info.csv')
+        else:
+            mode = "a"
+            filename = filename
+
+        with open(filename, mode=mode, newline="") as csvfile:
             # Create a CSV writer
             writer = csv.writer(csvfile)
             # Write the header row
@@ -204,16 +206,11 @@ class Embeddings:
             return result["data"][0]["embedding"]
         except Exception as e:
             # try again
-            if openai_calls_retried < max_openai_calls_retries:
+            if openai_calls_retried < self.max_openai_calls_retries:
                 openai_calls_retried += 1
                 print(f"Error calling OpenAI embeddings. Retrying {openai_calls_retried} of {max_openai_calls_retries}...")
                 return self.get_embedding(text, model)
-
-    def get_doc_embedding(self, text: str) -> list[float]:
-        return self.get_embedding(text, self.DOC_EMBEDDINGS_MODEL)
-
-    def get_query_embedding(self, text: str) -> list[float]:
-        return self.get_embedding(text, self.QUERY_EMBEDDINGS_MODEL)
+            
 
     def compute_doc_embeddings(self, df: pd.DataFrame) -> dict[tuple[str, str], list[float]]:
         """
@@ -248,7 +245,7 @@ class Embeddings:
             embeddings_df.loc[len(embeddings_df)] = row
 
         # Save the embeddings dataframe to a CSV file
-        embeddings_df.to_csv(csv_filepath, index=False)
+        embeddings_df.to_csv(csv_filepath, index=False, append=True)
 
     def vector_similarity(self, x: list[float], y: list[float]) -> float:
         return np.dot(np.array(x), np.array(y))
