@@ -28,6 +28,8 @@ logging.basicConfig(
     style='{'
 )
 
+logger = logging.getLogger(__name__)
+
 # Set Variables
 load_dotenv()
 current_directory = os.getcwd()
@@ -142,7 +144,7 @@ def openai_call(
     global openai_calls_retried
     if not model.startswith("gpt-"):
         # Use completion API
-        logging.debug(f"Request(completion): {prompt}")
+        logger.debug(f"Request(completion): {prompt}")
 
         response = openai.Completion.create(
             engine=model,
@@ -153,13 +155,13 @@ def openai_call(
             frequency_penalty=0,
             presence_penalty=0
         )
-        logging.debug(f"Response: {response.choices[0].text.strip()}")
+        logger.debug(f"Response: {response.choices[0].text.strip()}")
         return response.choices[0].text.strip()
     else:
         # Use chat completion API
         messages=[{"role": "user", "content": prompt}]
         try:
-            logging.debug(f"Request(chat): {prompt}")
+            logger.debug(f"Request(chat): {prompt}")
             response = openai.ChatCompletion.create(
                 model=model,
                 messages=messages,
@@ -169,11 +171,11 @@ def openai_call(
                 stop=None,
             )
             openai_calls_retried = 0
-            logging.debug(f"Response: {response.choices[0].message.content.strip()}")
+            logger.debug(f"Response: {response.choices[0].message.content.strip()}")
             return response.choices[0].message.content.strip()
         except Exception as e:
             # Log error details
-            logging.exception("Error calling OpenAI:")
+            logger.exception("Error calling OpenAI:")
             # try again
             if openai_calls_retried < max_openai_calls_retries:
                 openai_calls_retried += 1

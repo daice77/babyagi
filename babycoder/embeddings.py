@@ -45,31 +45,25 @@ class Embeddings:
 
         try:
             df_repo_info = pd.read_csv(repo_info_file)
+            df_repo_info = df_repo_info.set_index(["filePath", "lineCoverage"])
+            for changed_file in compare['changed']:
+                # Drop rows from repository_info.csv if present
+                if changed_file in df_repo_info.index:
+                    df_repo_info = df_repo_info.drop(changed_file)
+            df_repo_info.to_csv(repo_info_file)
         except FileNotFoundError:
-            df_repo_info = pd.DataFrame(columns=["filePath", "lineCoverage"])
+            pass
         try:
             df_embeddings = pd.read_csv(embeddings_file)
+            df_embeddings = df_embeddings.set_index(["filePath", "lineCoverage"])
+            for changed_file in compare['changed']:
+                # Drop rows from doc_embeddings.csv if present
+                if changed_file in df_embeddings.index:
+                    df_embeddings = df_embeddings.drop(changed_file)
+            df_embeddings.to_csv(embeddings_file)
         except FileNotFoundError:
-            df_embeddings = pd.DataFrame(columns=["filePath", "lineCoverage"])
-
-        # Set indexes for easier row dropping
-        df_repo_info = df_repo_info.set_index(["filePath", "lineCoverage"])
-        df_embeddings = df_embeddings.set_index(["filePath", "lineCoverage"])
-
-        # Remove stored embeddings for files that have changed or are deleted
-        for changed_file in compare['changed']:
-            # Drop rows from repository_info.csv if present
-            if changed_file in df_repo_info.index:
-                df_repo_info = df_repo_info.drop(changed_file)
-
-            # Drop rows from doc_embeddings.csv if present
-            if changed_file in df_embeddings.index:
-                df_embeddings = df_embeddings.drop(changed_file)
-
-        # Save modified dataframes back to CSV files
-        df_repo_info.to_csv(repo_info_file)
-        df_embeddings.to_csv(embeddings_file)
-
+            pass
+        
         
     def compute_repository_embeddings(self):
         # Load stored checksums and calculate checksums for the current repository  
@@ -109,7 +103,7 @@ class Embeddings:
     def extract_info(self, REPOSITORY_PATH, ignore_files: list, continue_from = None):
         # Initialize an empty list to store the information
         info = []
-
+        last_file_processed = None
         tokens_count = 0
         max_exceeded = False
         
@@ -126,11 +120,12 @@ class Embeddings:
 
         # Sort the file paths
         file_paths.sort()
+        file_paths = list(set(file_paths) - set(ignore_files))
 
         # Process the files in sorted order
         for file_path in file_paths:
 
-            if (not max_exceeded) and (file_path not in ignore_files):
+            if (not max_exceeded):
 
                 if (file_path == continue_from):
                     continue_from = None
@@ -185,11 +180,14 @@ class Embeddings:
         os.makedirs(os.path.join(self.workspace_path, "playground_data"), exist_ok=True)
         
         if not filename:
-            mode = "a"
             filename = os.path.join(self.workspace_path, 'playground_data', 'repository_info.csv')
+            if os.path.isfile(filename):
+                mode = "a"
+            else:
+                mode = "w"
         else:
-            mode = "w"
             filename = filename
+            mode = "w"
 
         with open(filename, mode=mode, newline="") as csvfile:
             # Create a CSV writer
