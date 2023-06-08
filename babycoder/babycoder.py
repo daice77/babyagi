@@ -296,22 +296,31 @@ def main_function(_args):
         print_colored_text('*****TASK COMPLETED*****', "yellow")
 
     print_colored_text('*****ALL TASKS COMPLETED*****', "yellow")
+    pass
 
 
 def parse_args(argv):
     parser = argparse.ArgumentParser(
-        description="AI-based Programming Assistant")
-    parser.add_argument("--help", action="store_true",
-                        help="Display short usage information")
-    parser.add_argument("objective", nargs="?",
-                        help="Objective to complete by the assistant", )
+        description="AI-based Programming Assistant",
+        add_help=False
+    )
+    parser.add_argument(
+        "--help",
+        action="store_true",
+        help="Display short usage information"
+    )
+    parser.add_argument(
+        "objective",
+        nargs="?",
+        help="Objective to complete by the assistant",
+    )
     args = parser.parse_args(argv)
     return args
 
 
 def show_usage():
-    usage = """ Usage: python babycoder.py [objective]
-
+    usage = """ 
+    Usage: python babycoder.py [objective]
     objective: Objective to complete by the assistant
 
     Example: python babycoder.py "Create a function to add two numbers"
@@ -325,4 +334,4 @@ if __name__ == "__main__":
         show_usage()
     else:
         main_function(args)
-    main_function()
+

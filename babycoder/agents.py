@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 import platform
 import openai
 import json
-from utils import MAX_TOKENS_GPT35_TURBO, OPENAI_API_MODEL_SIMPLE, OPENAI_API_MODEL
+from utils import MAX_TOKENS_SIMPLE, OPENAI_API_MODEL_SIMPLE, OPENAI_API_MODEL
 
 
 # Set Variables
@@ -79,7 +79,7 @@ def code_tasks_initializer_agent(objective: str) -> str:
                 ],
             }}
 
-    The tasks will be executed by either of the three agents: command_executor, code_writer or code_refactor. They can't interact with programs. They can either run terminal commands or write code snippets. Their output is controlled by other functions to run the commands or save their output to code files. Make sure the tasks are compatible with the current agents. ALL tasks MUST start either with the following phrases: 'Run a command to...', 'Write code to...', 'Edit existing code to...' depending on the agent that will execute the task. RETURN JSON ONLY:"""
+    The tasks will be executed by either of the three agents: command_executor, code_writer or code_refactor. They can't interact with programs. They can either run terminal commands or write code snippets. Their output is controlled by other functions to run the commands or save their output to code files. Make sure the tasks are compatible with the current agents. ALL tasks MUST start either with the following phrases: 'Run a command to...', 'Write code to...', 'Edit existing code to...' depending on the agent that will execute the task. Let's think step by step. RETURN JSON ONLY:"""
 
     return openai_call(prompt, temperature=0.8, max_tokens=remaining_tokens(prompt))
 
@@ -134,7 +134,7 @@ def code_tasks_refactor_agent(objective: str, task_list_json) -> str:
 
     IMPORTANT: All tasks should start either with the following phrases: 'Run a command to...', 'Write a code to...', 'Edit the code to...' depending on the agent that will execute the task:
             
-    ALWAYS ENSURE ALL TASKS HAVE RELEVANT CONTEXT ABOUT THE CODE TO BE WRITTEN, INCLUDE DETAILS ON HOW TO CALL FUNCTIONS, CLASSES, IMPORTS, ETC. AGENTS HAVE NO VIEW OF OTHER TASKS, SO THEY NEED TO BE SELF-CONTAINED. RETURN THE JSON:"""
+    ALWAYS ENSURE ALL TASKS HAVE RELEVANT CONTEXT ABOUT THE CODE TO BE WRITTEN, INCLUDE DETAILS ON HOW TO CALL FUNCTIONS, CLASSES, IMPORTS, ETC. AGENTS HAVE NO VIEW OF OTHER TASKS, SO THEY NEED TO BE SELF-CONTAINED. Let's think step by step. RETURN THE JSON:"""
 
     return openai_call(prompt, model=OPENAI_API_MODEL, temperature=0, max_tokens=remaining_tokens(prompt))
 
@@ -153,7 +153,7 @@ def code_tasks_details_agent(objective: str, task_list_json) -> str:
     
     RETURN THE SAME TASK LIST but with the description improved to contain the details you is adding for each task in the list. DO NOT MAKE OTHER MODIFICATIONS TO THE LIST. Your input should go in the 'description' field of each task.
     
-    RETURN JSON ONLY:"""
+    Let's think step by step. RETURN JSON ONLY:"""
     return openai_call(prompt, model=OPENAI_API_MODEL, temperature=0.2, max_tokens=remaining_tokens(prompt))
 
 
@@ -175,7 +175,7 @@ def code_tasks_context_agent(objective: str, task_list_json):
     
     RETURN THE SAME TASK LIST but with a new field called 'isolated_context' for each task in the list. This field should be a string with the context you are adding. DO NOT MAKE OTHER MODIFICATIONS TO THE LIST.
     
-    RETURN JSON ONLY:"""
+    Let's think step by step. RETURN JSON ONLY:"""
     return openai_call(prompt, model=OPENAI_API_MODEL, temperature=0.2, max_tokens=remaining_tokens(prompt))
 
 
@@ -197,8 +197,8 @@ def task_assigner_recommendation_agent(objective: str, task: str) -> str:
     - If the task involves modifying or optimizing existing code, consider using the code_refactor_agent.
     - If the task involves file operations, command execution, or running a script, consider using the command_executor_agent.
 
-    Based on the task and overall objective, suggest the most appropriate agent to work on the task."""
-    return openai_call(prompt, model=OPENAI_API_MODEL_SIMPLE, temperature=0.2, max_tokens=remaining_tokens(prompt, max_tokens=MAX_TOKENS_GPT35_TURBO))
+    Based on the task and overall objective, suggest the most appropriate agent to work on the task. """
+    return openai_call(prompt, model=OPENAI_API_MODEL_SIMPLE, temperature=0.2, max_tokens=remaining_tokens(prompt, max_tokens=MAX_TOKENS_SIMPLE))
 
 
 def task_assigner_agent(objective: str, task: str, recommendation: str) -> str:
@@ -219,7 +219,7 @@ def task_assigner_agent(objective: str, task: str, recommendation: str) -> str:
     TLDR: To create files, use command_executor_agent, to write text/code to files, use code_writer_agent, to modify existing code, use code_refactor_agent.
 
     Choose the most appropriate agent to work on the task and return a JSON output with the following format: {{"agent": "agent_name"}}. ONLY return JSON output:"""
-    return openai_call(prompt, model=OPENAI_API_MODEL_SIMPLE, temperature=0, max_tokens=remaining_tokens(prompt, max_tokens=MAX_TOKENS_GPT35_TURBO))
+    return openai_call(prompt, model=OPENAI_API_MODEL_SIMPLE, temperature=0, max_tokens=remaining_tokens(prompt, max_tokens=MAX_TOKENS_SIMPLE))
 
 
 def command_executor_agent(task: str, file_path: str) -> str:
@@ -229,7 +229,7 @@ def command_executor_agent(task: str, file_path: str) -> str:
     File or folder name referenced in the task (relative file path): {file_path} 
     
     Based on the task, write the appropriate command to execute on the {os_version} OS. Make sure the command is relevant to the task and objective. For example, if the task is to create a new folder, the command should be 'mkdir new_folder_name'. Return the command as a JSON output with the following format: {{"command": "command_to_execute"}}. ONLY return JSON output:"""
-    return openai_call(prompt, model=OPENAI_API_MODEL_SIMPLE, temperature=0, max_tokens=remaining_tokens(prompt, max_tokens=MAX_TOKENS_GPT35_TURBO))
+    return openai_call(prompt, model=OPENAI_API_MODEL_SIMPLE, temperature=0, max_tokens=remaining_tokens(prompt, max_tokens=MAX_TOKENS_SIMPLE))
 
 
 def code_writer_agent(task: str, isolated_context: str, context_code_chunks: list | str) -> str:
@@ -244,7 +244,8 @@ def code_writer_agent(task: str, isolated_context: str, context_code_chunks: lis
 
     Note: Always use 'encoding='utf-8'' when opening files with open().
     
-    Based on the task and objective, write the appropriate code to achieve the task. Make sure the code is relevant to the task and objective, and follows best practices. Return the code as a plain text output and NOTHING ELSE. Use identation and line breaks in the in the code. Make sure to only write the code and nothing else as your output will be saved directly to the file by other agent. IMPORTANT" If the task is asking you to write code to write files, this is a mistake! Interpret it and either do nothing or return  the plain code, not a code to write file, not a code to write code, etc."""
+    Based on the task and objective, write the appropriate code to achieve the task. Make sure the code is relevant to the task and objective, and follows best practices. Return the code as a plain text output and NOTHING ELSE. Use identation and line breaks in the in the code. Make sure to only write the code and nothing else as your output will be saved directly to the file by other agent. IMPORTANT" If the task is asking you to write code to write files, this is a mistake! Interpret it and either do nothing or return  the plain code, not a code to write file, not a code to write code, etc.
+    Let's think step by step."""
     return openai_call(prompt, model=OPENAI_API_MODEL, temperature=0.2, max_tokens=remaining_tokens(prompt))
 
 
@@ -270,7 +271,7 @@ def code_refactor_agent(task_description: str, existing_code_snippet: dict, cont
     Respond only with JSON! Use following format: 
     {{"file_path": "{{file_to_be_modified}}", "patch":{{"output_from_diff"}}}}. 
     
-    IMPORTANT: RESPOND WITH JSON ONLY, NOTHING ELSE! YOUR OUTPUT WILL BE ADDED DIRECTLY TO THE FILE BY OTHER AGENT. BE MINDFUL OF THIS:"""
+    IMPORTANT: RESPOND WITH JSON ONLY, NOTHING ELSE! YOUR OUTPUT WILL BE ADDED DIRECTLY TO THE FILE BY OTHER AGENT. Let's think step by step. BE MINDFUL OF THIS:"""
 
     return openai_call(prompt, model=OPENAI_API_MODEL, temperature=0.2, max_tokens=remaining_tokens(prompt))
 
@@ -289,7 +290,7 @@ def file_management_agent(objective: str, task: str, current_directory_files: st
     BE VERY SPECIFIC WITH THE FILES, AVOID FILE DUPLICATION, AVOID SPECIFYING THE SAME FILE NAME UNDER DIFFERENT FOLDERS, ETC.
 
     Based on the task, determine the file path and name for the generated code. Return the file path and name as a JSON output with the following format: {{"file_path": "file_path_and_name"}}. ONLY return JSON output:"""
-    return openai_call(prompt, model=OPENAI_API_MODEL_SIMPLE, temperature=0, max_tokens=remaining_tokens(prompt, max_tokens=MAX_TOKENS_GPT35_TURBO))
+    return openai_call(prompt, model=OPENAI_API_MODEL_SIMPLE, temperature=0, max_tokens=remaining_tokens(prompt, max_tokens=MAX_TOKENS_SIMPLE))
 
 
 def code_relevance_agent(objective: str, task_description: str, code_chunk: dict) -> str:
@@ -300,7 +301,7 @@ def code_relevance_agent(objective: str, task_description: str, code_chunk: dict
     The code chunk is as follows (line numbers included):
     {str(code_chunk)}
 
-    Based on the task description, objective, and code chunk, assign a relevance score between 0 and 1000 (inclusive) for the code chunk. DO NOT OUTPUT ANYTHING OTHER THAN THE RELEVANCE SCORE AS A NUMBER."""
+    Based on the task description, objective, and code chunk, assign a relevance score between 0 and 1000 (inclusive) for the code chunk. DO NOT OUTPUT ANYTHING OTHER THAN THE RELEVANCE SCORE AS A NUMBER. Let's think step by step."""
 
     relevance_score = openai_call(
         prompt, model=OPENAI_API_MODEL, temperature=0.3, max_tokens=50)
@@ -324,7 +325,7 @@ def task_human_input_agent(task: str, human_feedback: str) -> str:
 
     Note that your output will replace the existing task, so make sure that your output is a valid task that starts with one of the required phrases ('Run a command to...', 'Write code to...', 'Edit existing code to...').
     
-    Please adjust the task based on the human feedback while ensuring it starts with one of the required phrases ('Run a command to...', 'Write code to...', 'Edit existing code to...'). Return the improved task as a plain text output and nothing else. Write only the new task."""
+    Please adjust the task based on the human feedback while ensuring it starts with one of the required phrases ('Run a command to...', 'Write code to...', 'Edit existing code to...'). Return the improved task as a plain text output and nothing else. Write only the new task. Let's think step by step."""
 
     return openai_call(prompt, model=OPENAI_API_MODEL, temperature=0.3, max_tokens=remaining_tokens(prompt))
 

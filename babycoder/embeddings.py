@@ -20,8 +20,7 @@ REPOSITORY_PATH = os.path.join(os.path.dirname(
     os.path.realpath(__file__)), "playground")
 
 EMBEDDINGS_MODEL = f"text-embedding-ada-002"
-MAX_TOKENS_EMBEDDINGS_MODEL = openai.Model.retrieve(EMBEDDINGS_MODEL)["usage"]["max_tokens"]
-
+MAX_TOKENS_EMBEDDINGS_MODEL = 8192
 
 class Embeddings:
     def __init__(self, workspace_path: str) -> None:

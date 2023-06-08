@@ -63,14 +63,14 @@ max_openai_calls_retries = 3
 TTS = os.getenv("TTS", False)
 
 OPENAI_API_MODEL = os.getenv("OPENAI_API_MODEL", None)
+OPENAI_API_MODEL_SIMPLE = os.getenv("OPENAI_API_MODEL_SIMPLE", "gpt-3.5-turbo")
 assert OPENAI_API_MODEL, "OPENAI_API_MODEL environment variable is missing from .env"
 
 OPENAI_API_MODEL_SIMPLE = os.getenv("OPENAI_API_MODEL_SIMPLE", "gpt-3.5-turbo")
 assert OPENAI_API_MODEL_SIMPLE, "OPENAI_API_MODEL_SIMPLE environment variable is missing from .env"
 
-MAX_TOKENS = openai.Model.retrieve(OPENAI_API_MODEL)["usage"]["max_tokens"]
-MAX_TOKENS_GPT35_TURBO = openai.Model.retrieve(OPENAI_API_MODEL_SIMPLE)[
-    "usage"]["max_tokens"]
+MAX_TOKENS = 8196
+MAX_TOKENS_SIMPLE = 4096
 
 
 def remaining_tokens(prompt, max_tokens: int = MAX_TOKENS, model: str = "cl100k_base") -> int:
