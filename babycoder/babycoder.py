@@ -35,7 +35,6 @@ from dotenv import load_dotenv
 import json
 import argparse
 
-
 import shutil
 from embeddings import Embeddings
 

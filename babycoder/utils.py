@@ -46,15 +46,12 @@ import openai
 import json
 import subprocess
 from typing import List, Dict, Union
-import platform
-
 
 logger = logging.getLogger(__name__)
 
 # Set Variables
 load_dotenv()
 current_directory = os.getcwd()
-os_version = platform.release()
 
 openai_calls_retried = 0
 max_openai_calls_retries = 3

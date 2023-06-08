@@ -12,9 +12,6 @@ load_dotenv()
 current_directory = os.getcwd()
 os_version = platform.release()
 
-openai_calls_retried = 0
-max_openai_calls_retries = 3
-
 
 def code_tasks_initializer_agent(objective: str) -> str:
     prompt = f"""You are an AGI agent responsible for creating a detailed JSON checklist of tasks that will guide other AGI agents to complete a given programming objective. Your task is to analyze the provided objective and generate a well-structured checklist with a clear starting point and end point, as well as tasks broken down to be very specific, clear, and executable by other agents without the context of other tasks.
@@ -133,8 +130,8 @@ def code_tasks_refactor_agent(objective: str, task_list_json) -> str:
             }}
 
     IMPORTANT: All tasks should start either with the following phrases: 'Run a command to...', 'Write a code to...', 'Edit the code to...' depending on the agent that will execute the task:
-            
-    ALWAYS ENSURE ALL TASKS HAVE RELEVANT CONTEXT ABOUT THE CODE TO BE WRITTEN, INCLUDE DETAILS ON HOW TO CALL FUNCTIONS, CLASSES, IMPORTS, ETC. AGENTS HAVE NO VIEW OF OTHER TASKS, SO THEY NEED TO BE SELF-CONTAINED. Let's think step by step. RETURN THE JSON:"""
+
+    Let's think step by step. ALWAYS ENSURE ALL TASKS HAVE RELEVANT CONTEXT ABOUT THE CODE TO BE WRITTEN, INCLUDE DETAILS ON HOW TO CALL FUNCTIONS, CLASSES, IMPORTS, ETC. AGENTS HAVE NO VIEW OF OTHER TASKS, SO THEY NEED TO BE SELF-CONTAINED. RETURN THE JSON:"""
 
     return openai_call(prompt, model=OPENAI_API_MODEL, temperature=0, max_tokens=remaining_tokens(prompt))
 
@@ -216,7 +213,7 @@ def task_assigner_agent(objective: str, task: str, recommendation: str) -> str:
 
     Please consider the task description and the overall objective when choosing the most appropriate agent. Keep in mind that creating a file and writing code are different tasks. If the task involves creating a file, like "calculator.py" but does not mention writing any code inside it, the command_executor_agent should be used for this purpose. The code_writer_agent should only be used when the task requires writing or adding code to a file. The code_refactor_agent should only be used when the task requires modifying existing code.
     
-    TLDR: To create files, use command_executor_agent, to write text/code to files, use code_writer_agent, to modify existing code, use code_refactor_agent.
+    TLDR: To create files, use command_executor_agent; to write text/code to files, use code_writer_agent; to modify existing code, use code_refactor_agent.
 
     Choose the most appropriate agent to work on the task and return a JSON output with the following format: {{"agent": "agent_name"}}. ONLY return JSON output:"""
     return openai_call(prompt, model=OPENAI_API_MODEL_SIMPLE, temperature=0, max_tokens=remaining_tokens(prompt, max_tokens=MAX_TOKENS_SIMPLE))
@@ -239,12 +236,13 @@ def code_writer_agent(task: str, isolated_context: str, context_code_chunks: lis
 
     To help you make the code useful in this codebase, use this context as reference of the other pieces of the codebase that are relevant to your task. PAY ATTENTION TO THIS: {isolated_context}
     
-    The following code chunks were found to be relevant to the task (JSON with fileName, from/to line, code snipplet). You can use them as reference to write the code if they are useful. PAY CLOSE ATTENTION TO THIS: 
+    The following code chunks were found to be relevant to the task (JSON with fileName, from/to line, code snippet). You can use them as reference to write the code if they are useful. PAY CLOSE ATTENTION TO THIS: 
     {context_code_chunks}
 
     Note: Always use 'encoding='utf-8'' when opening files with open().
     
-    Based on the task and objective, write the appropriate code to achieve the task. Make sure the code is relevant to the task and objective, and follows best practices. Return the code as a plain text output and NOTHING ELSE. Use identation and line breaks in the in the code. Make sure to only write the code and nothing else as your output will be saved directly to the file by other agent. IMPORTANT" If the task is asking you to write code to write files, this is a mistake! Interpret it and either do nothing or return  the plain code, not a code to write file, not a code to write code, etc.
+    Based on the task and objective, write the appropriate code to achieve the task. Make sure the code is relevant to the task and objective, and follows best practices. Return the code as a plain text output and NOTHING ELSE. Use identation and line breaks in the in the code. Make sure to only write the code and nothing else as your output will be saved directly to the file by other agent. 
+    IMPORTANT: If the task is asking you to write code to write files, this is a mistake! Interpret it and either do nothing or return  the plain code, not a code to write file, not a code to write code, etc.
     Let's think step by step."""
     return openai_call(prompt, model=OPENAI_API_MODEL, temperature=0.2, max_tokens=remaining_tokens(prompt))
 
@@ -259,19 +257,21 @@ def code_refactor_agent(task_description: str, existing_code_snippet: dict, cont
     Here are some code context chunks that might also be relevant to the task:
     {context_chunks}
     
-    This is the existing code you should refactor (this is a snipplet from the file {existing_code_snippet["file_path"]}, line {existing_code_snippet["from_line"]} to line {existing_code_snippet["to_line"]}):
+    This is the existing code you should refactor (this is a snippet from the file {existing_code_snippet["file_path"]}, line {existing_code_snippet["from_line"]} to line {existing_code_snippet["to_line"]}):
     \n```code\n{existing_code_snippet["code"]}\n```
     
     Now refactor above code to achieve the task (based on the task description, objective). Make sure the refactored code is relevant to the task and objective, follows best practices, verified. Reflect on your response before replying.
 
     Next prepare the modifications to the original code. Use the output format from "diff -u", which next agent can then apply as a patch to the original source code file.
     
-    The source code is provided as an snipplet from original source code file, including line numbers in original source code file. Pretend you know the whole file and based on that, generate the patch (output of diff, sent back as JSON).
+    The source code is provided as an snippet from original source code file, including line numbers in original source code file. Pretend you know the whole file and based on that, generate the patch (output of diff, sent back as JSON).
 
     Respond only with JSON! Use following format: 
     {{"file_path": "{{file_to_be_modified}}", "patch":{{"output_from_diff"}}}}. 
     
-    IMPORTANT: RESPOND WITH JSON ONLY, NOTHING ELSE! YOUR OUTPUT WILL BE ADDED DIRECTLY TO THE FILE BY OTHER AGENT. Let's think step by step. BE MINDFUL OF THIS:"""
+    Let's think step by step.
+
+    IMPORTANT: RESPOND WITH JSON ONLY, NOTHING ELSE! YOUR OUTPUT WILL BE ADDED DIRECTLY TO THE FILE BY OTHER AGENT. BE MINDFUL OF THIS:"""
 
     return openai_call(prompt, model=OPENAI_API_MODEL, temperature=0.2, max_tokens=remaining_tokens(prompt))
 
@@ -301,7 +301,7 @@ def code_relevance_agent(objective: str, task_description: str, code_chunk: dict
     The code chunk is as follows (line numbers included):
     {str(code_chunk)}
 
-    Based on the task description, objective, and code chunk, assign a relevance score between 0 and 1000 (inclusive) for the code chunk. DO NOT OUTPUT ANYTHING OTHER THAN THE RELEVANCE SCORE AS A NUMBER. Let's think step by step."""
+    Based on the task description, objective, and code chunk, assign a relevance score between 0 and 1000 (inclusive) for the code chunk. DO NOT OUTPUT ANYTHING OTHER THAN THE RELEVANCE SCORE AS A NUMBER."""
 
     relevance_score = openai_call(
         prompt, model=OPENAI_API_MODEL, temperature=0.3, max_tokens=50)
