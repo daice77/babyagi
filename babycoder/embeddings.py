@@ -1,6 +1,5 @@
 import os
 import csv 
-import shutil
 import openai
 import pandas as pd
 import numpy as np

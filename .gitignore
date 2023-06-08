@@ -2,11 +2,13 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+
 .env
 .env.*
 env/
 .venv
 *venv/
+.conda/
 
 .vscode/
 .idea/
