@@ -51,7 +51,7 @@ import logging
 
 # Configure logging
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='[{asctime}] [{levelname}] [{filename}:{lineno}] {funcName}: {message}',
     datefmt='%Y-%m-%d %H:%M:%S',
     filename='debug.openai.log',
