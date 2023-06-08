@@ -30,17 +30,18 @@ This script is an AI-based programming assistant that automates coding tasks. It
 """
 
 import os
-import openai
 import sys
 from dotenv import load_dotenv
 import json
-import platform
+import argparse
+
 
 import shutil
 from embeddings import Embeddings
 
 from utils import execute_command_json, execute_command_string, save_code_to_file, split_code_into_chunks
 from utils import print_colored_text, print_char_by_char
+from utils import OPENAI_API_MODEL
 
 from agents import code_writer_agent, code_refactor_agent, code_tasks_context_agent, code_relevance_agent
 from agents import task_assigner_agent, task_assigner_recommendation_agent
@@ -64,21 +65,6 @@ logger = logging.getLogger(__name__)
 # Set Variables
 load_dotenv()
 current_directory = os.getcwd()
-os_version = platform.release()
-
-openai_calls_retried = 0
-max_openai_calls_retries = 3
-
-
-# Set API Keys
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-assert OPENAI_API_KEY, "OPENAI_API_KEY environment variable is missing from .env"
-openai.api_key = OPENAI_API_KEY
-
-OPENAI_API_MODEL = os.getenv("OPENAI_API_MODEL", None)
-assert OPENAI_API_MODEL, "OPENAI_API_MODEL environment variable is missing from .env"
-
-OPENAI_API_MODEL_SIMPLE = os.getenv("OPENAI_API_MODEL_SIMPLE", "gpt-3.5-turbo")
 
 
 # clear embeddings index and re-index all playground files during startup
@@ -111,7 +97,7 @@ if RESET_EMBEDDINGS_INDEX:
     embeddings = Embeddings(current_directory)
     embeddings.compute_repository_embeddings()
 
-
+# gpt-4 cost warning
 if "gpt-4" in OPENAI_API_MODEL.lower():
     print(
         f"\033[91m\033[1m"
@@ -119,16 +105,24 @@ if "gpt-4" in OPENAI_API_MODEL.lower():
         + "\033[0m\033[0m"
     )
 
+# get OBJECTIVE
 if len(sys.argv) > 1:
     OBJECTIVE = sys.argv[1]
 elif os.path.exists(os.path.join(current_directory, "objective.txt")):
     with open(os.path.join(current_directory, "objective.txt")) as f:
         OBJECTIVE = f.read()
-
 assert OBJECTIVE, "OBJECTIVE missing"
 
-if __name__ == "__main__":
 
+def main_function(_args):
+    """
+    The main function executes the AI-based Programming Assistant script that simplifies the coding process.
+    It automates imports, sets environment variables, and reads the objective from a file or command-line argument.
+    The AI-assistant then proceeds to complete tasks based on the targeted result. It saves the outcome as a generated code
+    and displays progress throughout the process.
+
+    :return: None
+    """
     print_colored_text(f"****Objective****", color='green')
     print_char_by_char(OBJECTIVE, 0.00001, 10)
 
@@ -302,3 +296,33 @@ if __name__ == "__main__":
         print_colored_text('*****TASK COMPLETED*****', "yellow")
 
     print_colored_text('*****ALL TASKS COMPLETED*****', "yellow")
+
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(
+        description="AI-based Programming Assistant")
+    parser.add_argument("--help", action="store_true",
+                        help="Display short usage information")
+    parser.add_argument("objective", nargs="?",
+                        help="Objective to complete by the assistant", )
+    args = parser.parse_args(argv)
+    return args
+
+
+def show_usage():
+    usage = """ Usage: python babycoder.py [objective]
+
+    objective: Objective to complete by the assistant
+
+    Example: python babycoder.py "Create a function to add two numbers"
+    """
+    print(usage)
+
+
+if __name__ == "__main__":
+    args = parse_args(sys.argv[1:])
+    if args.help:
+        show_usage()
+    else:
+        main_function(args)
+    main_function()
