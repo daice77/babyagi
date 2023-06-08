@@ -68,7 +68,7 @@ OPENAI_API_MODEL = os.getenv("OPENAI_API_MODEL", None)
 assert OPENAI_API_MODEL, "OPENAI_API_MODEL environment variable is missing from .env"
 
 
-def available_tokens(prompt, max_tokens: int = MAX_TOKENS, model: str = "cl100k_base") -> int:
+def remaining_tokens(prompt, max_tokens: int = MAX_TOKENS, model: str = "cl100k_base") -> int:
     return int(0.9 * (max_tokens - count_tokens(prompt, model)))
 
 
