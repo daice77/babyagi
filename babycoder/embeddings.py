@@ -229,7 +229,7 @@ class Embeddings:
             # try again
             if openai_calls_retried < self.max_openai_calls_retries:
                 openai_calls_retried += 1
-                print(f"Error calling OpenAI embeddings. Retrying {openai_calls_retried} of {max_openai_calls_retries}...")
+                print(f"Error calling OpenAI embeddings. Retrying {openai_calls_retried} of {self.max_openai_calls_retries}...")
                 return self.get_embedding(text, model)
             
 
