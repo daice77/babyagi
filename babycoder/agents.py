@@ -1,6 +1,5 @@
 from utils import openai_call, remaining_tokens
 import os
-import logging
 from dotenv import load_dotenv
 import platform
 import openai

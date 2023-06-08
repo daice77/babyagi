@@ -32,7 +32,6 @@ This script is an AI-based programming assistant that automates coding tasks. It
 import os
 import openai
 import sys
-from typing import List, Dict
 from dotenv import load_dotenv
 import json
 import platform
@@ -40,11 +39,11 @@ import platform
 import shutil
 from embeddings import Embeddings
 
-from utils import execute_command_json, execute_command_string, save_code_to_file, split_code_into_chunks, refactor_code
+from utils import execute_command_json, execute_command_string, save_code_to_file, split_code_into_chunks
 from utils import print_colored_text, print_char_by_char
 
 from agents import code_writer_agent, code_refactor_agent, code_tasks_context_agent, code_relevance_agent
-from agents import task_human_input_agent, task_assigner_agent, task_assigner_recommendation_agent
+from agents import task_assigner_agent, task_assigner_recommendation_agent
 from agents import command_executor_agent, file_management_agent
 from agents import code_tasks_refactor_agent, code_tasks_context_agent, code_tasks_initializer_agent, code_tasks_details_agent
 
