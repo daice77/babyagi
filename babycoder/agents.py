@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 import platform
 import openai
 import json
+from utils import MAX_TOKENS_GPT35_TURBO, OPENAI_API_MODEL_SIMPLE, OPENAI_API_MODEL
 
 
 # Set Variables
@@ -13,18 +14,6 @@ os_version = platform.release()
 
 openai_calls_retried = 0
 max_openai_calls_retries = 3
-
-
-# Set API Keys
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-assert OPENAI_API_KEY, "OPENAI_API_KEY environment variable is missing from .env"
-openai.api_key = OPENAI_API_KEY
-
-OPENAI_API_MODEL = os.getenv("OPENAI_API_MODEL", None)
-assert OPENAI_API_MODEL, "OPENAI_API_MODEL environment variable is missing from .env"
-
-OPENAI_API_MODEL_SIMPLE = os.getenv("OPENAI_API_MODEL_SIMPLE", "gpt-3.5-turbo")
-assert OPENAI_API_MODEL_SIMPLE, "OPENAI_API_MODEL_SIMPLE environment variable is missing from .env"
 
 
 def code_tasks_initializer_agent(objective: str) -> str:
@@ -209,7 +198,7 @@ def task_assigner_recommendation_agent(objective: str, task: str) -> str:
     - If the task involves file operations, command execution, or running a script, consider using the command_executor_agent.
 
     Based on the task and overall objective, suggest the most appropriate agent to work on the task."""
-    return openai_call(prompt, model=OPENAI_API_MODEL_SIMPLE, temperature=0.2, max_tokens=remaining_tokens(prompt, max_tokens=4000))
+    return openai_call(prompt, model=OPENAI_API_MODEL_SIMPLE, temperature=0.2, max_tokens=remaining_tokens(prompt, max_tokens=MAX_TOKENS_GPT35_TURBO))
 
 
 def task_assigner_agent(objective: str, task: str, recommendation: str) -> str:
@@ -230,7 +219,7 @@ def task_assigner_agent(objective: str, task: str, recommendation: str) -> str:
     TLDR: To create files, use command_executor_agent, to write text/code to files, use code_writer_agent, to modify existing code, use code_refactor_agent.
 
     Choose the most appropriate agent to work on the task and return a JSON output with the following format: {{"agent": "agent_name"}}. ONLY return JSON output:"""
-    return openai_call(prompt, model=OPENAI_API_MODEL_SIMPLE, temperature=0, max_tokens=remaining_tokens(prompt, max_tokens=4000))
+    return openai_call(prompt, model=OPENAI_API_MODEL_SIMPLE, temperature=0, max_tokens=remaining_tokens(prompt, max_tokens=MAX_TOKENS_GPT35_TURBO))
 
 
 def command_executor_agent(task: str, file_path: str) -> str:
@@ -240,7 +229,7 @@ def command_executor_agent(task: str, file_path: str) -> str:
     File or folder name referenced in the task (relative file path): {file_path} 
     
     Based on the task, write the appropriate command to execute on the {os_version} OS. Make sure the command is relevant to the task and objective. For example, if the task is to create a new folder, the command should be 'mkdir new_folder_name'. Return the command as a JSON output with the following format: {{"command": "command_to_execute"}}. ONLY return JSON output:"""
-    return openai_call(prompt, model=OPENAI_API_MODEL_SIMPLE, temperature=0, max_tokens=remaining_tokens(prompt, max_tokens=4000))
+    return openai_call(prompt, model=OPENAI_API_MODEL_SIMPLE, temperature=0, max_tokens=remaining_tokens(prompt, max_tokens=MAX_TOKENS_GPT35_TURBO))
 
 
 def code_writer_agent(task: str, isolated_context: str, context_code_chunks: list | str) -> str:
@@ -256,7 +245,7 @@ def code_writer_agent(task: str, isolated_context: str, context_code_chunks: lis
     Note: Always use 'encoding='utf-8'' when opening files with open().
     
     Based on the task and objective, write the appropriate code to achieve the task. Make sure the code is relevant to the task and objective, and follows best practices. Return the code as a plain text output and NOTHING ELSE. Use identation and line breaks in the in the code. Make sure to only write the code and nothing else as your output will be saved directly to the file by other agent. IMPORTANT" If the task is asking you to write code to write files, this is a mistake! Interpret it and either do nothing or return  the plain code, not a code to write file, not a code to write code, etc."""
-    return openai_call(prompt, model=OPENAI_API_MODEL, temperature=0, max_tokens=remaining_tokens(prompt))
+    return openai_call(prompt, model=OPENAI_API_MODEL, temperature=0.2, max_tokens=remaining_tokens(prompt))
 
 
 def code_refactor_agent(task_description: str, existing_code_snippet: dict, context_chunks, isolated_context: str) -> str:
@@ -266,21 +255,24 @@ def code_refactor_agent(task_description: str, existing_code_snippet: dict, cont
     The current task description is: \n```task description\n{task_description}\n```
     To help you make the code useful in this codebase, use this context as reference of the other pieces of the codebase that are relevant to your task: {isolated_context}
 
-    Here are some context chunks that might be relevant to the task:
+    Here are some code context chunks that might also be relevant to the task:
     {context_chunks}
     
     This is the existing code you should refactor (this is a snipplet from the file {existing_code_snippet["file_path"]}, line {existing_code_snippet["from_line"]} to line {existing_code_snippet["to_line"]}):
     \n```code\n{existing_code_snippet["code"]}\n```
     
-    Based on the task description, objective, refactor the existing code to achieve the task. Make sure the refactored code is relevant to the task and objective, follows best practices, etc.
+    Now refactor above code to achieve the task (based on the task description, objective). Make sure the refactored code is relevant to the task and objective, follows best practices, verified. Reflect on your response before replying.
 
-    Prepare the modifications to the code using the output from "diff -u" which can be applied as a patch to the original source code file.
+    Next prepare the modifications to the original code. Use the output format from "diff -u", which next agent can then apply as a patch to the original source code file.
     
-    The source code is provided as an extract from original file including line numbers in original source code file, pretend you know the whole file when generating the required patch output.
+    The source code is provided as an snipplet from original source code file, including line numbers in original source code file. Pretend you know the whole file and based on that, generate the patch (output of diff, sent back as JSON).
 
-    Respond only with JSON, use following format: {{"file_path": "{{file_to_be_modified}}", "patch":{{"output_from_diff"}}}}. IMPORTANT: RESPOND WITH JSON ONLY, NOTHING ELSE! YOUR OUTPUT WILL BE ADDED DIRECTLY TO THE FILE BY OTHER AGENT. BE MINDFUL OF THIS:"""
+    Respond only with JSON! Use following format: 
+    {{"file_path": "{{file_to_be_modified}}", "patch":{{"output_from_diff"}}}}. 
+    
+    IMPORTANT: RESPOND WITH JSON ONLY, NOTHING ELSE! YOUR OUTPUT WILL BE ADDED DIRECTLY TO THE FILE BY OTHER AGENT. BE MINDFUL OF THIS:"""
 
-    return openai_call(prompt, model=OPENAI_API_MODEL, temperature=0, max_tokens=remaining_tokens(prompt))
+    return openai_call(prompt, model=OPENAI_API_MODEL, temperature=0.2, max_tokens=remaining_tokens(prompt))
 
 
 def file_management_agent(objective: str, task: str, current_directory_files: str, file_path: str) -> str:
@@ -297,7 +289,7 @@ def file_management_agent(objective: str, task: str, current_directory_files: st
     BE VERY SPECIFIC WITH THE FILES, AVOID FILE DUPLICATION, AVOID SPECIFYING THE SAME FILE NAME UNDER DIFFERENT FOLDERS, ETC.
 
     Based on the task, determine the file path and name for the generated code. Return the file path and name as a JSON output with the following format: {{"file_path": "file_path_and_name"}}. ONLY return JSON output:"""
-    return openai_call(prompt, model=OPENAI_API_MODEL_SIMPLE, temperature=0, max_tokens=remaining_tokens(prompt, max_tokens=4000))
+    return openai_call(prompt, model=OPENAI_API_MODEL_SIMPLE, temperature=0, max_tokens=remaining_tokens(prompt, max_tokens=MAX_TOKENS_GPT35_TURBO))
 
 
 def code_relevance_agent(objective: str, task_description: str, code_chunk: dict) -> str:

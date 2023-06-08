@@ -79,7 +79,6 @@ OPENAI_API_MODEL = os.getenv("OPENAI_API_MODEL", None)
 assert OPENAI_API_MODEL, "OPENAI_API_MODEL environment variable is missing from .env"
 
 OPENAI_API_MODEL_SIMPLE = os.getenv("OPENAI_API_MODEL_SIMPLE", "gpt-3.5-turbo")
-assert OPENAI_API_MODEL_SIMPLE, "OPENAI_API_MODEL_SIMPLE environment variable is missing from .env"
 
 
 # clear embeddings index and re-index all playground files during startup
@@ -279,15 +278,25 @@ if __name__ == "__main__":
                 modified_code_output = code_refactor_agent(
                     task_description, code_snipplet, context_chunks=relevant_chunks, isolated_context=task_isolated_context)
 
-                patch = json.loads(modified_code_output)['patch']
+                try:
+                    patch = json.loads(modified_code_output)['patch']
+
+                except json.JSONDecodeError as e:
+                    # try to remove ``` at beginning and end
+                    modified_code_output = modified_code_output[modified_code_output.find(
+                        '{'):modified_code_output.rfind('```')]
+                    patch = json.loads(modified_code_output)['patch']
 
                 print_colored_text("*****PATCHING CODE*****", "green")
                 print(patch)
                 response = []
-                response += execute_command_string(f'echo \'{patch}\' > .tmp')
-                response += execute_command_string(f'sed \'s/\\\\n/\\\n/g\' .tmp')
-                response += execute_command_string(f'patch --backup < .tmp')
-                response += execute_command_string(f'rm .tmp')
+                response += execute_command_string(
+                    f'echo \'{patch}\' > .tmp.patch')
+                response += execute_command_string(
+                    f'sed \'s/\\\\n/\\\n/g\' .tmp.patch > .tmp.sed')
+                response += execute_command_string(
+                    f'patch --backup < .tmp.sed')
+                response += execute_command_string(f'rm .tmp.*')
                 logger.debug(f'Patching command returned:{response}')
 
         print_colored_text('*****TASK COMPLETED*****', "yellow")

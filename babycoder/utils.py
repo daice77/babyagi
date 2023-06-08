@@ -59,13 +59,18 @@ os_version = platform.release()
 openai_calls_retried = 0
 max_openai_calls_retries = 3
 
-MAX_TOKENS = 8192
-
 # enable/disable text to speech
 TTS = os.getenv("TTS", False)
 
 OPENAI_API_MODEL = os.getenv("OPENAI_API_MODEL", None)
 assert OPENAI_API_MODEL, "OPENAI_API_MODEL environment variable is missing from .env"
+
+OPENAI_API_MODEL_SIMPLE = os.getenv("OPENAI_API_MODEL_SIMPLE", "gpt-3.5-turbo")
+assert OPENAI_API_MODEL_SIMPLE, "OPENAI_API_MODEL_SIMPLE environment variable is missing from .env"
+
+MAX_TOKENS = openai.Model.retrieve(OPENAI_API_MODEL)["usage"]["max_tokens"]
+MAX_TOKENS_GPT35_TURBO = openai.Model.retrieve(OPENAI_API_MODEL_SIMPLE)[
+    "usage"]["max_tokens"]
 
 
 def remaining_tokens(prompt, max_tokens: int = MAX_TOKENS, model: str = "cl100k_base") -> int:
@@ -310,7 +315,6 @@ def execute_command_string(command_string: str) -> str:
         return "Error: Timeout reached (60 seconds)"
     except Exception as e:
         return f"Error: {str(e)}"
-
 
 
 def save_code_to_file(code: str, file_path: str) -> None | str:

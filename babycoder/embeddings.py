@@ -12,8 +12,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-MAX_TOKENS = 4096   # model max token is 8192, but we need to leave some space for the query
-
 # Heavily derived from OpenAi's cookbook example
 load_dotenv()
 
@@ -21,25 +19,43 @@ load_dotenv()
 REPOSITORY_PATH = os.path.join(os.path.dirname(
     os.path.realpath(__file__)), "playground")
 
+EMBEDDINGS_MODEL = f"text-embedding-ada-002"
+MAX_TOKENS_EMBEDDINGS_MODEL = openai.Model.retrieve(EMBEDDINGS_MODEL)[
+    "usage"]["max_tokens"]
+
 
 class Embeddings:
-    def __init__(self, workspace_path: str):
+    def __init__(self, workspace_path: str) -> None:
+        """
+        Initialize the Embeddings class.
+
+        Parameters
+        ----------
+        workspace_path : str
+            Path to the workspace.
+        """
         self.workspace_path = workspace_path
         openai.api_key = os.getenv("OPENAI_API_KEY", "")
 
-        self.DOC_EMBEDDINGS_MODEL = f"text-embedding-ada-002"
-        self.QUERY_EMBEDDINGS_MODEL = f"text-embedding-ada-002"
-
+        self.DOC_EMBEDDINGS_MODEL = EMBEDDINGS_MODEL
+        self.QUERY_EMBEDDINGS_MODEL = EMBEDDINGS_MODEL
         self.SEPARATOR = "\n* "
-
         self.tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
-        self.tokenizer.model_max_length = MAX_TOKENS
-
+        self.tokenizer.model_max_length = MAX_TOKENS_EMBEDDINGS_MODEL
         self.separator_len = len(self.tokenizer.tokenize(self.SEPARATOR))
-
         self.max_openai_calls_retries = 3
 
-    def remove_changed_or_deleted(self, compare, workspace_path):
+    def _remove_changed_or_deleted(self, compare: dict, workspace_path: str) -> None:
+        """
+        Remove stored embeddings for files that have been changed or deleted.
+
+        Parameters
+        ----------
+        compare : dict
+            Dictionary containing 'changed' files.
+        workspace_path : str
+            Path to the workspace.
+        """
         # Load CSV files
         repo_info_file = os.path.join(
             workspace_path, 'playground_data', 'repository_info.csv')
@@ -71,17 +87,20 @@ class Embeddings:
             pass
 
     def compute_repository_embeddings(self):
-        # Load stored checksums and calculate checksums for the current repository
+        """
+        Load stored checksums and calculate the repository's embeddings (update only for changed files).
+        """
         old_checksums = load_checksums(os.path.join(
             self.workspace_path, 'playground_data', 'checksums.json'))
         current_checksums = calculate_checksums(REPOSITORY_PATH)
 
+        # check which files have changed (or deleted)
         compare = compare_checksums(REPOSITORY_PATH, old_checksums)
 
         # remove stored embeddings for files that have changed or are deleted
-        self.remove_changed_or_deleted(compare, self.workspace_path)
+        self._remove_changed_or_deleted(compare, self.workspace_path)
 
-        # Extract information from files in the repository in chunks
+        # and now calculate embeddings for updated or new files
         info_and_last_file = {"info": None, "last_file_processed": None}
         while True:
             info_and_last_file = self.extract_info(
@@ -109,10 +128,27 @@ class Embeddings:
         except:
             pass
 
-    # Extract information from files in the repository in chunks
-    # Return a list of [filePath, lineCoverage, chunkContent]
+    def extract_info(self, repository_path: str, ignore_files: list, continue_from: str = None) -> dict:
+        """
+        Extract information from files in the repository in chunks
+        and return a list of (filePath, lineCoverage, chunkContent).
 
-    def extract_info(self, REPOSITORY_PATH, ignore_files: list, continue_from=None):
+        Parameters
+        ----------
+        REPOSITORY_PATH : str
+            Path to the repository.
+        ignore_files : list
+            List of files to ignore.
+        continue_from : str, optional
+            File path to start processing from, default is None.
+
+        Returns
+        -------
+        dict
+            A dictionary containing:
+                - "info": list of (filePath, lineCoverage, chunkContent)
+                - "last_file_processed": the last processed file path
+        """
         # Initialize an empty list to store the information
         info = []
         last_file_processed = None
@@ -125,7 +161,7 @@ class Embeddings:
         file_paths = []
 
         # Iterate over directories and files
-        for dirpath, dirnames, filenames in os.walk(REPOSITORY_PATH):
+        for dirpath, dirnames, filenames in os.walk(repository_path):
             for filename in filenames:
                 file_path = os.path.join(dirpath, filename)
                 file_paths.append(file_path)
@@ -170,7 +206,7 @@ class Embeddings:
                         # Add the file path, line coverage, and content to the list
                         info.append((file_path, line_coverage, chunk))
                         tokens_count += len(self.tokenizer.tokenize(chunk))
-                        if tokens_count > MAX_TOKENS:
+                        if tokens_count > int(0.5 * MAX_TOKENS_EMBEDDINGS_MODEL):
                             max_exceeded = True
 
                     last_file_processed = file_path
@@ -184,17 +220,27 @@ class Embeddings:
 
             else:
                 logger.info(
-                    f"Last processed file {file_path}, skipping rest because max token count exceeded ({tokens_count} > {MAX_TOKENS}))")
+                    f"Last processed file {file_path}, skipping rest because max token count exceeded ({tokens_count} > {MAX_TOKENS_EMBEDDINGS_MODEL}))")
                 return {"info": info, "last_file_processed": last_file_processed}
 
         # Return the list of information
         return {"info": info, "last_file_processed": None}
 
     def save_info_to_csv(self, info, filename=None):
-        # Open a CSV file for writing
+        """
+        Save file information to a CSV file.
+
+        Parameters
+        ----------
+        info : list
+            List containing file info as tuples.
+        filename : str, optional
+            The output CSV file name; default is None (in that case playground_data/repository.csv is used).
+        """
         os.makedirs(os.path.join(self.workspace_path,
                     "playground_data"), exist_ok=True)
 
+        # for default repository: append, for different store (temporary store): write
         if not filename:
             filename = os.path.join(
                 self.workspace_path, 'playground_data', 'repository_info.csv')
@@ -207,17 +253,33 @@ class Embeddings:
             mode = "w"
 
         with open(filename, mode=mode, newline="") as csvfile:
-            # Create a CSV writer
             writer = csv.writer(csvfile)
             if mode == "w":
-                # Write the header row
                 writer.writerow(["filePath", "lineCoverage", "content"])
-            # Iterate through the info
             for file_path, line_coverage, content in info:
                 # Write a row for each chunk of data
                 writer.writerow([file_path, line_coverage, content])
 
     def get_relevant_code_chunks(self, task_description: str, task_context: str) -> list:
+        """
+        Get the most relevant code chunks for a given task description and context.
+
+        Parameters
+        ----------
+        task_description : str
+            Text description of the task.
+        task_context : str
+            Context to use for the task.
+
+        Returns
+        -------
+        list
+            List of most relevant code chunks containing:
+                - "relevance_score": The similarity score.
+                - "filePath": The file path of the code chunk.
+                - "(from_line,to_line)": The line coverage of the code chunk.
+                - "content": The content of the code chunk.
+        """
         query = task_description + "\n" + task_context
         most_relevant_document_sections = self.order_document_sections_by_query_similarity(
             query, self.document_embeddings)
@@ -240,6 +302,21 @@ class Embeddings:
         return selected_chunks
 
     def get_embedding(self, text: str, model: str) -> list[float]:
+        """
+        Get the embedding for a given text using the specified model.
+
+        Parameters
+        ----------
+        text : str
+            Text to be embedded.
+        model : str
+            OpenAI model to be used for embedding.
+
+        Returns
+        -------
+        list[float]
+            Embedding vector.
+        """
         global openai_calls_retried
 
         try:
@@ -258,16 +335,40 @@ class Embeddings:
                 return self.get_embedding(text, model)
 
     def get_doc_embedding(self, text: str) -> list[float]:
+        """
+        Get the document embedding for a given text using the DOC_EMBEDDINGS_MODEL.
+
+        Parameters
+        ----------
+        text : str
+            Text to be embedded.
+
+        Returns
+        -------
+        list[float]
+            Embedding vector.
+        """
         return self.get_embedding(text, self.DOC_EMBEDDINGS_MODEL)
 
     def get_query_embedding(self, text: str) -> list[float]:
+        """
+        Get the query embedding for a given text using the QUERY_EMBEDDINGS_MODEL.
+
+        Parameters
+        ----------
+        text : str
+            Text to be embedded.
+
+        Returns
+        -------
+        list[float]
+            Embedding vector.
+        """
         return self.get_embedding(text, self.QUERY_EMBEDDINGS_MODEL)
 
     def compute_doc_embeddings(self, df: pd.DataFrame) -> dict[tuple[str, str], list[float]]:
         """
-        Create an embedding for each row in the dataframe using the OpenAI Embeddings API.
-
-        Return a dictionary that maps between each embedding vector and the index of the row that it corresponds to.
+        Calculate the repository's embeddings (only for modified files).
         """
         embeddings = {}
         for idx, r in df.iterrows():
@@ -278,7 +379,19 @@ class Embeddings:
                 r.content.replace("\n", " "))
         return embeddings
 
-    def save_doc_embeddings_to_csv(self, doc_embeddings: dict, df: pd.DataFrame, csv_filepath: str):
+    def save_doc_embeddings_to_csv(self, doc_embeddings: dict, df: pd.DataFrame, csv_filepath: str) -> None:
+        """
+        Save document embeddings to a CSV file.
+
+        Parameters
+        ----------
+        doc_embeddings : dict
+            Dictionary containing document embeddings.
+        df : pd.DataFrame
+            Dataframe containing code chunks information.
+        csv_filepath : str
+            Filepath for the CSV file.
+        """
         # Get the dimensionality of the embedding vectors from the first element in the doc_embeddings dictionary
         if len(doc_embeddings) == 0:
             return
@@ -308,6 +421,21 @@ class Embeddings:
             embeddings_df.to_csv(csv_filepath, index=False, mode='w')
 
     def vector_similarity(self, x: list[float], y: list[float]) -> float:
+        """
+        Compute the similarity between two vectors.
+
+        Parameters
+        ----------
+        x : list[float]
+            First vector.
+        y : list[float]
+            Second vector.
+
+        Returns
+        -------
+        float
+            The similarity score.
+        """
         return np.dot(np.array(x), np.array(y))
 
     def order_document_sections_by_query_similarity(self, query: str, contexts: dict[(str, str), np.array]) -> list[(float, (str, str))]:
@@ -315,7 +443,17 @@ class Embeddings:
         Find the query embedding for the supplied query, and compare it against all of the pre-calculated document embeddings
         to find the most relevant sections. 
 
-        Return the list of document sections, sorted by relevance in descending order.
+        Parameters
+        ----------
+        query : str
+            The query text.
+        contexts : dict[(str, str), np.array]
+            Dictionary of document sections with their embeddings.
+
+        Returns
+        -------
+        list[(float, (str, str))]
+            The list of document sections, sorted by relevance in descending order.
         """
         query_embedding = self.get_query_embedding(query)
 
@@ -326,6 +464,19 @@ class Embeddings:
         return document_similarities
 
     def load_embeddings(self, fname: str) -> dict[tuple[str, str], list[float]]:
+        """
+        Load embeddings from a CSV file.
+
+        Parameters
+        ----------
+        fname : str
+            Filepath for the CSV file.
+
+        Returns
+        -------
+        dict[tuple[str, str], list[float]]
+            Dictionary containing embeddings.
+        """
         df = pd.read_csv(fname, header=0)
         max_dim = max([int(c) for c in df.columns if c !=
                       "filePath" and c != "lineCoverage"])
