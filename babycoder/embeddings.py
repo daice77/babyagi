@@ -52,6 +52,7 @@ class Embeddings:
             for changed_file in compare['changed']:
                 # Drop rows from repository_info.csv if present
                 if changed_file in df_repo_info.index:
+                    df_repo_info = df_repo_info.sort_index()
                     df_repo_info = df_repo_info.drop(changed_file)
             df_repo_info.to_csv(repo_info_file)
         except FileNotFoundError:
@@ -63,6 +64,7 @@ class Embeddings:
             for changed_file in compare['changed']:
                 # Drop rows from doc_embeddings.csv if present
                 if changed_file in df_embeddings.index:
+                    df_embeddings = df_embeddings.sort_index()
                     df_embeddings = df_embeddings.drop(changed_file)
             df_embeddings.to_csv(embeddings_file)
         except FileNotFoundError:
@@ -215,19 +217,24 @@ class Embeddings:
                 # Write a row for each chunk of data
                 writer.writerow([file_path, line_coverage, content])
 
-    def get_relevant_code_chunks(self, task_description: str, task_context: str):
+    def get_relevant_code_chunks(self, task_description: str, task_context: str) -> list:
         query = task_description + "\n" + task_context
         most_relevant_document_sections = self.order_document_sections_by_query_similarity(
             query, self.document_embeddings)
         selected_chunks = []
-        for _, section_index in most_relevant_document_sections:
+        for score, file_and_line in most_relevant_document_sections:
             try:
-                document_section = self.df.loc[section_index]
-                selected_chunks.append(
-                    self.SEPARATOR + document_section['content'].replace("\n", " "))
-                if len(selected_chunks) >= 2:
+                relevant_chunk = self.df.loc[(
+                    file_and_line[0], file_and_line[1])].reset_index()
+                if score > 0.8:
+                    selected_chunks.append(
+                        {"relevance_score": score, "filePath": relevant_chunk["filePath"], "(from_line,to_line)": relevant_chunk["lineCoverage"], "content": relevant_chunk['content']})
+                if len(selected_chunks) >= 3:
                     break
-            except:
+            except Exception as e:
+                err = f"Error: {str(e)}"
+                print(err)
+                logger.error(err)
                 pass
 
         return selected_chunks

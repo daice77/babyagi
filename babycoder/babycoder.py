@@ -51,7 +51,7 @@ import logging
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='[{asctime}] [{levelname}] [{filename}:{lineno}] {funcName}: {message}',
     datefmt='%Y-%m-%d %H:%M:%S',
     filename='debug.openai.log',
@@ -283,8 +283,12 @@ if __name__ == "__main__":
 
                 print_colored_text("*****PATCHING CODE*****", "green")
                 print(patch)
-                response = execute_command_string(
-                    f'echo \'{patch}\' | sed \'s/\\\\n/\\\n/g\' | patch --backup')
+                response = []
+                response += execute_command_string(f'echo \'{patch}\' > .tmp')
+                response += execute_command_string(f'sed \'s/\\\\n/\\\n/g\' .tmp')
+                response += execute_command_string(f'patch --backup < .tmp')
+                response += execute_command_string(f'rm .tmp')
+                logger.debug(f'Patching command returned:{response}')
 
         print_colored_text('*****TASK COMPLETED*****', "yellow")
 
