@@ -284,11 +284,13 @@ class Embeddings:
         selected_chunks = []
         for score, file_and_line in most_relevant_document_sections:
             try:
-                relevant_chunk = self.df.loc[(
-                    file_and_line[0], file_and_line[1])].reset_index()
-                if score > 0.8:
-                    selected_chunks.append(
-                        {"relevance_score": score, "filePath": relevant_chunk["filePath"], "(from_line,to_line)": relevant_chunk["lineCoverage"], "content": relevant_chunk['content']})
+                i = (file_and_line[0], file_and_line[1])
+                if i in self.df.index:
+                    relevant_chunk = self.df.loc[i].copy()
+                    relevant_chunk = relevant_chunk.reset_index()
+                    if score > 0.8:
+                        selected_chunks.append(
+                            {"relevance_score": score, "filePath": relevant_chunk["filePath"], "(from_line,to_line)": relevant_chunk["lineCoverage"], "content": relevant_chunk['content']})
                 if len(selected_chunks) >= 3:
                     break
             except Exception as e:
