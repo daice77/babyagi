@@ -245,15 +245,16 @@ def openai_call(
                 f"Response: {response.choices[0].message.content.strip()}")
             return response.choices[0].message.content.strip()
         except Exception as e:
-            # Log error details
             logger.exception("Error calling OpenAI:")
-            # try again
             if openai_calls_retried < max_openai_calls_retries:
+                # try again
                 openai_calls_retried += 1
                 print(
                     f"Error calling OpenAI. Retrying {openai_calls_retried} of {max_openai_calls_retries}...")
                 return openai_call(prompt, model, temperature, max_tokens)
-
+            else:
+                # re-raise the exception
+                raise e
 
 def execute_command_json(json_string: str) -> str:
     """

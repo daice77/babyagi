@@ -18,7 +18,7 @@ llama/
 
 babycoder/playground/*
 babycoder/playground_data/*
-babycoder/objective.txt
+babycoder/objective.txt*
 babycoder/*.log
 
 # for node
