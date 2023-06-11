@@ -244,7 +244,7 @@ def main_function(_args):
                 relevance_scores = []
                 for chunk in code_chunks:
                     score = code_relevance_agent(
-                        OBJECTIVE, task_description, chunk)
+                        OBJECTIVE, task_description, chunk)                   
                     relevance_scores.append(score)
 
                 # Select the most relevant chunk and the context chunks (similar high score)

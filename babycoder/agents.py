@@ -304,7 +304,7 @@ def code_relevance_agent(objective: str, task_description: str, code_chunk: dict
     Based on the task description, objective, and code chunk, assign a relevance score between 0 and 1000 (inclusive) for the code chunk. DO NOT OUTPUT ANYTHING OTHER THAN THE RELEVANCE SCORE AS A NUMBER."""
 
     relevance_score = openai_call(
-        prompt, model=OPENAI_API_MODEL, temperature=0.3, max_tokens=50)
+        prompt, model=OPENAI_API_MODEL, temperature=0.1, max_tokens=50)
 
     return json.dumps({"relevance_score": relevance_score.strip()})
 
