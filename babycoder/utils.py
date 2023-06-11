@@ -64,13 +64,17 @@ OPENAI_API_MODEL_SIMPLE = os.getenv("OPENAI_API_MODEL_SIMPLE", "gpt-3.5-turbo")
 assert OPENAI_API_MODEL, "OPENAI_API_MODEL environment variable is missing from .env"
 
 OPENAI_API_MODEL_SIMPLE = os.getenv("OPENAI_API_MODEL_SIMPLE", "gpt-3.5-turbo")
-assert OPENAI_API_MODEL_SIMPLE, "OPENAI_API_MODEL_SIMPLE environment variable is missing from .env"
+assert (
+    OPENAI_API_MODEL_SIMPLE
+), "OPENAI_API_MODEL_SIMPLE environment variable is missing from .env"
 
 MAX_TOKENS = 8196
 MAX_TOKENS_SIMPLE = 4096
 
 
-def remaining_tokens(prompt, max_tokens: int = MAX_TOKENS, model: str = "cl100k_base") -> int:
+def remaining_tokens(
+    prompt, max_tokens: int = MAX_TOKENS, model: str = "cl100k_base"
+) -> int:
     """
     Calculate the remaining tokens that can be used in an OpenAI API call after considering the input text.
 
@@ -127,13 +131,13 @@ def print_colored_text(text, color) -> None:
         The text style. Default is 'bold'.
     """
     color_mapping = {
-        'blue': '\033[34m',
-        'red': '\033[31m',
-        'yellow': '\033[33m',
-        'green': '\033[32m',
+        "blue": "\033[34m",
+        "red": "\033[31m",
+        "yellow": "\033[33m",
+        "green": "\033[32m",
     }
-    color_code = color_mapping.get(color.lower(), '')
-    reset_code = '\033[0m'
+    color_code = color_mapping.get(color.lower(), "")
+    reset_code = "\033[0m"
     print(color_code + text + reset_code)
     if TTS == True:
         text_to_speech(text)
@@ -154,8 +158,8 @@ def print_char_by_char(text: str, delay=0.00001, chars_at_once=3) -> None:
     """
     if text is not None:
         for i in range(0, len(text), chars_at_once):
-            chunk = text[i:i + chars_at_once]
-            print(chunk, end='', flush=True)
+            chunk = text[i : i + chars_at_once]
+            print(chunk, end="", flush=True)
             time.sleep(delay)
         print()
 
@@ -167,7 +171,7 @@ def __play_audio(audio) -> None:
     sa.play_buffer(samples, audio.channels, 2, audio.frame_rate).wait_done()
 
 
-def text_to_speech(text, lang='en') -> None:
+def text_to_speech(text, lang="en") -> None:
     """
     Convert the given text to speech and play it.
 
@@ -223,7 +227,7 @@ def openai_call(
             max_tokens=max_tokens,
             top_p=1,
             frequency_penalty=0,
-            presence_penalty=0
+            presence_penalty=0,
         )
         logger.info(f"Response: {response.choices[0].text.strip()}")
         return response.choices[0].text.strip()
@@ -241,8 +245,7 @@ def openai_call(
                 stop=None,
             )
             openai_calls_retried = 0
-            logger.info(
-                f"Response: {response.choices[0].message.content.strip()}")
+            logger.info(f"Response: {response.choices[0].message.content.strip()}")
             return response.choices[0].message.content.strip()
         except Exception as e:
             logger.exception("Error calling OpenAI:")
@@ -250,11 +253,13 @@ def openai_call(
                 # try again
                 openai_calls_retried += 1
                 print(
-                    f"Error calling OpenAI. Retrying {openai_calls_retried} of {max_openai_calls_retries}...")
+                    f"Error calling OpenAI. Retrying {openai_calls_retried} of {max_openai_calls_retries}..."
+                )
                 return openai_call(prompt, model, temperature, max_tokens)
             else:
                 # re-raise the exception
                 raise e
+
 
 def execute_command_json(json_string: str) -> str:
     """
@@ -272,7 +277,7 @@ def execute_command_json(json_string: str) -> str:
     """
     try:
         command_data = json.loads(json_string)
-        full_command = command_data.get('command')
+        full_command = command_data.get("command")
 
         return execute_command_string(full_command)
 
@@ -297,8 +302,14 @@ def execute_command_string(command_string: str) -> str:
         The stdout (or stderr) outputs as a single string.
     """
     try:
-        process = subprocess.Popen(command_string, stdout=subprocess.PIPE,
-                                   stderr=subprocess.PIPE, text=True, shell=True, cwd='playground')
+        process = subprocess.Popen(
+            command_string,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            shell=True,
+            cwd="playground",
+        )
         stdout, stderr = process.communicate(timeout=60)
 
         return_code = process.returncode
@@ -328,14 +339,16 @@ def save_code_to_file(code: str, file_path: str) -> None | str:
     """
     full_path = os.path.join(current_directory, "playground", file_path)
     try:
-        mode = 'a' if os.path.exists(full_path) else 'w'
-        with open(full_path, mode, encoding='utf-8') as f:
-            f.write(code + '\n\n')
+        mode = "a" if os.path.exists(full_path) else "w"
+        with open(full_path, mode, encoding="utf-8") as f:
+            f.write(code + "\n\n")
     except Exception as e:
         return f"Error: {str(e)}"
 
 
-def refactor_code(modified_code: List[Dict[str, Union[int, str]]], file_path: str) -> None:
+def refactor_code(
+    modified_code: List[Dict[str, Union[int, str]]], file_path: str
+) -> None:
     """
     Stores the refactored code in the given file.
 
@@ -358,7 +371,7 @@ def refactor_code(modified_code: List[Dict[str, Union[int, str]]], file_path: st
         modified_chunk = modification["modified_code"].splitlines()
 
         # Remove original lines within the range
-        del lines[start_line - 1:end_line]
+        del lines[start_line - 1 : end_line]
 
         # Insert the new modified_chunk lines
         for i, line in enumerate(modified_chunk):
@@ -368,7 +381,9 @@ def refactor_code(modified_code: List[Dict[str, Union[int, str]]], file_path: st
         f.writelines(lines)
 
 
-def split_code_into_chunks(file_path: str, chunk_size: int = 50) -> List[Dict[str, Union[int, str]]]:
+def split_code_into_chunks(
+    file_path: str, chunk_size: int = 50
+) -> List[Dict[str, Union[int, str]]]:
     """
     Split the given code into chunks, each containing at most max_lines lines of code.
 
@@ -393,8 +408,11 @@ def split_code_into_chunks(file_path: str, chunk_size: int = 50) -> List[Dict[st
     for i in range(0, len(lines), chunk_size):
         start_line = i + 1
         end_line = min(i + chunk_size, len(lines))
-        chunk = {"start_line": start_line, "end_line": end_line,
-                 "code": "".join(lines[i:end_line])}
+        chunk = {
+            "start_line": start_line,
+            "end_line": end_line,
+            "code": "".join(lines[i:end_line]),
+        }
         chunks.append(chunk)
     return chunks
 

@@ -6,7 +6,12 @@ import numpy as np
 from transformers import GPT2TokenizerFast
 from dotenv import load_dotenv
 import time
-from checksums import calculate_checksums, compare_checksums, persist_checksums, load_checksums
+from checksums import (
+    calculate_checksums,
+    compare_checksums,
+    persist_checksums,
+    load_checksums,
+)
 
 import logging
 
@@ -16,11 +21,13 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # the dir is the ./playground directory
-REPOSITORY_PATH = os.path.join(os.path.dirname(
-    os.path.realpath(__file__)), "playground")
+REPOSITORY_PATH = os.path.join(
+    os.path.dirname(os.path.realpath(__file__)), "playground"
+)
 
 EMBEDDINGS_MODEL = f"text-embedding-ada-002"
 MAX_TOKENS_EMBEDDINGS_MODEL = 8192
+
 
 class Embeddings:
     def __init__(self, workspace_path: str) -> None:
@@ -56,14 +63,16 @@ class Embeddings:
         """
         # Load CSV files
         repo_info_file = os.path.join(
-            workspace_path, 'playground_data', 'repository_info.csv')
+            workspace_path, "playground_data", "repository_info.csv"
+        )
         embeddings_file = os.path.join(
-            workspace_path, 'playground_data', 'doc_embeddings.csv')
+            workspace_path, "playground_data", "doc_embeddings.csv"
+        )
 
         try:
             df_repo_info = pd.read_csv(repo_info_file)
             df_repo_info = df_repo_info.set_index(["filePath", "lineCoverage"])
-            for changed_file in compare['changed']:
+            for changed_file in compare["changed"]:
                 # Drop rows from repository_info.csv if present
                 if changed_file in df_repo_info.index:
                     df_repo_info = df_repo_info.sort_index()
@@ -73,9 +82,8 @@ class Embeddings:
             pass
         try:
             df_embeddings = pd.read_csv(embeddings_file)
-            df_embeddings = df_embeddings.set_index(
-                ["filePath", "lineCoverage"])
-            for changed_file in compare['changed']:
+            df_embeddings = df_embeddings.set_index(["filePath", "lineCoverage"])
+            for changed_file in compare["changed"]:
                 # Drop rows from doc_embeddings.csv if present
                 if changed_file in df_embeddings.index:
                     df_embeddings = df_embeddings.sort_index()
@@ -88,8 +96,9 @@ class Embeddings:
         """
         Load stored checksums and calculate the repository's embeddings (update only for changed files).
         """
-        old_checksums = load_checksums(os.path.join(
-            self.workspace_path, 'playground_data', 'checksums.json'))
+        old_checksums = load_checksums(
+            os.path.join(self.workspace_path, "playground_data", "checksums.json")
+        )
         current_checksums = calculate_checksums(REPOSITORY_PATH)
 
         # check which files have changed (or deleted)
@@ -102,31 +111,57 @@ class Embeddings:
         info_and_last_file = {"info": None, "last_file_processed": None}
         while True:
             info_and_last_file = self.extract_info(
-                REPOSITORY_PATH, ignore_files=compare['unchanged'], continue_from=info_and_last_file["last_file_processed"])
+                REPOSITORY_PATH,
+                ignore_files=compare["unchanged"],
+                continue_from=info_and_last_file["last_file_processed"],
+            )
             self.save_info_to_csv(info_and_last_file["info"])
-            self.save_info_to_csv(info_and_last_file["info"], filename=os.path.join(
-                self.workspace_path, 'playground_data', 'repository_info_current_chunk.csv'))
+            self.save_info_to_csv(
+                info_and_last_file["info"],
+                filename=os.path.join(
+                    self.workspace_path,
+                    "playground_data",
+                    "repository_info_current_chunk.csv",
+                ),
+            )
 
-            df = pd.read_csv(os.path.join(
-                self.workspace_path, 'playground_data', 'repository_info_current_chunk.csv'))
+            df = pd.read_csv(
+                os.path.join(
+                    self.workspace_path,
+                    "playground_data",
+                    "repository_info_current_chunk.csv",
+                )
+            )
             df = df.set_index(["filePath", "lineCoverage"])
             self.df = df
             context_embeddings = self.compute_doc_embeddings(df)
-            self.save_doc_embeddings_to_csv(context_embeddings, df, os.path.join(
-                self.workspace_path, 'playground_data', 'doc_embeddings.csv'))
+            self.save_doc_embeddings_to_csv(
+                context_embeddings,
+                df,
+                os.path.join(
+                    self.workspace_path, "playground_data", "doc_embeddings.csv"
+                ),
+            )
 
             if info_and_last_file["last_file_processed"] is None:
                 break
 
-        persist_checksums(current_checksums, os.path.join(
-            self.workspace_path, 'playground_data', 'checksums.json'))
+        persist_checksums(
+            current_checksums,
+            os.path.join(self.workspace_path, "playground_data", "checksums.json"),
+        )
         try:
-            self.document_embeddings = self.load_embeddings(os.path.join(
-                self.workspace_path, 'playground_data', 'doc_embeddings.csv'))
+            self.document_embeddings = self.load_embeddings(
+                os.path.join(
+                    self.workspace_path, "playground_data", "doc_embeddings.csv"
+                )
+            )
         except:
             pass
 
-    def extract_info(self, repository_path: str, ignore_files: list, continue_from: str = None) -> dict:
+    def extract_info(
+        self, repository_path: str, ignore_files: list, continue_from: str = None
+    ) -> dict:
         """
         Extract information from files in the repository in chunks
         and return a list of (filePath, lineCoverage, chunkContent).
@@ -170,13 +205,11 @@ class Embeddings:
 
         # Process the files in sorted order
         for file_path in file_paths:
-
-            if (not max_exceeded):
-
-                if (file_path == continue_from):
+            if not max_exceeded:
+                if file_path == continue_from:
                     continue_from = None
                     continue
-                elif (continue_from is None):
+                elif continue_from is None:
                     # Read the contents of the file
                     with open(file_path, "r", encoding="utf-8") as f:
                         try:
@@ -190,7 +223,7 @@ class Embeddings:
                     lines = [line for line in lines if line.strip()]
                     # Split the lines into chunks of LINES_PER_CHUNK lines
                     chunks = [
-                        lines[i:i+LINES_PER_CHUNK]
+                        lines[i : i + LINES_PER_CHUNK]
                         for i in range(0, len(lines), LINES_PER_CHUNK)
                     ]
                     # Iterate through the chunks
@@ -211,14 +244,15 @@ class Embeddings:
                 else:
                     if file_path in ignore_files:
                         logger.info(
-                            f"Skipping file {file_path} - in list of unchanged files")
+                            f"Skipping file {file_path} - in list of unchanged files"
+                        )
                     else:
-                        logger.info(
-                            f"Skipping file {file_path} - already processed")
+                        logger.info(f"Skipping file {file_path} - already processed")
 
             else:
                 logger.info(
-                    f"Last processed file {file_path}, skipping rest because max token count exceeded ({tokens_count} > {MAX_TOKENS_EMBEDDINGS_MODEL}))")
+                    f"Last processed file {file_path}, skipping rest because max token count exceeded ({tokens_count} > {MAX_TOKENS_EMBEDDINGS_MODEL}))"
+                )
                 return {"info": info, "last_file_processed": last_file_processed}
 
         # Return the list of information
@@ -235,13 +269,13 @@ class Embeddings:
         filename : str, optional
             The output CSV file name; default is None (in that case playground_data/repository.csv is used).
         """
-        os.makedirs(os.path.join(self.workspace_path,
-                    "playground_data"), exist_ok=True)
+        os.makedirs(os.path.join(self.workspace_path, "playground_data"), exist_ok=True)
 
         # for default repository: append, for different store (temporary store): write
         if not filename:
             filename = os.path.join(
-                self.workspace_path, 'playground_data', 'repository_info.csv')
+                self.workspace_path, "playground_data", "repository_info.csv"
+            )
             if os.path.isfile(filename):
                 mode = "a"
             else:
@@ -258,7 +292,9 @@ class Embeddings:
                 # Write a row for each chunk of data
                 writer.writerow([file_path, line_coverage, content])
 
-    def get_relevant_code_chunks(self, task_description: str, task_context: str) -> list:
+    def get_relevant_code_chunks(
+        self, task_description: str, task_context: str
+    ) -> list:
         """
         Get the most relevant code chunks for a given task description and context.
 
@@ -279,8 +315,11 @@ class Embeddings:
                 - "content": The content of the code chunk.
         """
         query = task_description + "\n" + task_context
-        most_relevant_document_sections = self.order_document_sections_by_query_similarity(
-            query, self.document_embeddings)
+        most_relevant_document_sections = (
+            self.order_document_sections_by_query_similarity(
+                query, self.document_embeddings
+            )
+        )
         selected_chunks = []
         for score, file_and_line in most_relevant_document_sections:
             try:
@@ -290,7 +329,13 @@ class Embeddings:
                     relevant_chunk = relevant_chunk.reset_index()
                     if score > 0.8:
                         selected_chunks.append(
-                            {"relevance_score": score, "filePath": relevant_chunk["filePath"], "(from_line,to_line)": relevant_chunk["lineCoverage"], "content": relevant_chunk['content']})
+                            {
+                                "relevance_score": score,
+                                "filePath": relevant_chunk["filePath"],
+                                "(from_line,to_line)": relevant_chunk["lineCoverage"],
+                                "content": relevant_chunk["content"],
+                            }
+                        )
                 if len(selected_chunks) >= 3:
                     break
             except Exception as e:
@@ -320,10 +365,7 @@ class Embeddings:
         global openai_calls_retried
 
         try:
-            result = openai.Embedding.create(
-                model=model,
-                input=text
-            )
+            result = openai.Embedding.create(model=model, input=text)
             openai_calls_retried = 0
             return result["data"][0]["embedding"]
         except Exception as e:
@@ -331,7 +373,8 @@ class Embeddings:
             if openai_calls_retried < self.max_openai_calls_retries:
                 openai_calls_retried += 1
                 print(
-                    f"Error calling OpenAI embeddings. Retrying {openai_calls_retried} of {self.max_openai_calls_retries}...")
+                    f"Error calling OpenAI embeddings. Retrying {openai_calls_retried} of {self.max_openai_calls_retries}..."
+                )
                 return self.get_embedding(text, model)
 
     def get_doc_embedding(self, text: str) -> list[float]:
@@ -366,7 +409,9 @@ class Embeddings:
         """
         return self.get_embedding(text, self.QUERY_EMBEDDINGS_MODEL)
 
-    def compute_doc_embeddings(self, df: pd.DataFrame) -> dict[tuple[str, str], list[float]]:
+    def compute_doc_embeddings(
+        self, df: pd.DataFrame
+    ) -> dict[tuple[str, str], list[float]]:
         """
         Calculate the repository's embeddings (only for modified files).
         """
@@ -375,11 +420,12 @@ class Embeddings:
             # Wait one second before making the next call to the OpenAI Embeddings API
             # print("Waiting one second before embedding next row\n")
             time.sleep(1)
-            embeddings[idx] = self.get_doc_embedding(
-                r.content.replace("\n", " "))
+            embeddings[idx] = self.get_doc_embedding(r.content.replace("\n", " "))
         return embeddings
 
-    def save_doc_embeddings_to_csv(self, doc_embeddings: dict, df: pd.DataFrame, csv_filepath: str) -> None:
+    def save_doc_embeddings_to_csv(
+        self, doc_embeddings: dict, df: pd.DataFrame, csv_filepath: str
+    ) -> None:
         """
         Save document embeddings to a CSV file.
 
@@ -400,7 +446,9 @@ class Embeddings:
 
         # Create a new dataframe with the filePath, lineCoverage, and embedding vector columns
         embeddings_df = pd.DataFrame(
-            columns=["filePath", "lineCoverage"] + [f"{i}" for i in range(EMBEDDING_DIM)])
+            columns=["filePath", "lineCoverage"]
+            + [f"{i}" for i in range(EMBEDDING_DIM)]
+        )
 
         # Iterate over the rows in the original dataframe
         for idx, _ in df.iterrows():
@@ -415,10 +463,9 @@ class Embeddings:
 
         # Save the embeddings DataFrame to a CSV file
         if file_exists:
-            embeddings_df.to_csv(csv_filepath, index=False,
-                                 mode='a', header=False)
+            embeddings_df.to_csv(csv_filepath, index=False, mode="a", header=False)
         else:
-            embeddings_df.to_csv(csv_filepath, index=False, mode='w')
+            embeddings_df.to_csv(csv_filepath, index=False, mode="w")
 
     def vector_similarity(self, x: list[float], y: list[float]) -> float:
         """
@@ -438,10 +485,12 @@ class Embeddings:
         """
         return np.dot(np.array(x), np.array(y))
 
-    def order_document_sections_by_query_similarity(self, query: str, contexts: dict[(str, str), np.array]) -> list[(float, (str, str))]:
+    def order_document_sections_by_query_similarity(
+        self, query: str, contexts: dict[(str, str), np.array]
+    ) -> list[(float, (str, str))]:
         """
         Find the query embedding for the supplied query, and compare it against all of the pre-calculated document embeddings
-        to find the most relevant sections. 
+        to find the most relevant sections.
 
         Parameters
         ----------
@@ -457,9 +506,13 @@ class Embeddings:
         """
         query_embedding = self.get_query_embedding(query)
 
-        document_similarities = sorted([
-            (self.vector_similarity(query_embedding, doc_embedding), doc_index) for doc_index, doc_embedding in contexts.items()
-        ], reverse=True)
+        document_similarities = sorted(
+            [
+                (self.vector_similarity(query_embedding, doc_embedding), doc_index)
+                for doc_index, doc_embedding in contexts.items()
+            ],
+            reverse=True,
+        )
 
         return document_similarities
 
@@ -478,8 +531,10 @@ class Embeddings:
             Dictionary containing embeddings.
         """
         df = pd.read_csv(fname, header=0)
-        max_dim = max([int(c) for c in df.columns if c !=
-                      "filePath" and c != "lineCoverage"])
+        max_dim = max(
+            [int(c) for c in df.columns if c != "filePath" and c != "lineCoverage"]
+        )
         return {
-            (r.filePath, r.lineCoverage): [r[str(i)] for i in range(max_dim + 1)] for _, r in df.iterrows()
+            (r.filePath, r.lineCoverage): [r[str(i)] for i in range(max_dim + 1)]
+            for _, r in df.iterrows()
         }
