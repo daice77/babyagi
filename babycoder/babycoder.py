@@ -52,6 +52,7 @@ from agents import (
     code_refactor_agent,
     code_tasks_context_agent,
     code_relevance_agent,
+    task_human_input_agent,
 )
 from agents import task_assigner_agent, task_assigner_recommendation_agent
 from agents import command_executor_agent, file_management_agent
@@ -118,16 +119,8 @@ if "gpt-4" in OPENAI_API_MODEL.lower():
         + "\033[0m\033[0m"
     )
 
-# get OBJECTIVE
-if len(sys.argv) > 1:
-    OBJECTIVE = sys.argv[1]
-elif os.path.exists(os.path.join(current_directory, "objective.txt")):
-    with open(os.path.join(current_directory, "objective.txt")) as f:
-        OBJECTIVE = f.read()
-assert OBJECTIVE, "OBJECTIVE missing"
 
-
-def main_function(_args):
+def main_function(args):
     """
     The main function executes the AI-based Programming Assistant script that simplifies the coding process.
     It automates imports, sets environment variables, and reads the objective from a file or command-line argument.
@@ -136,26 +129,52 @@ def main_function(_args):
 
     :return: None
     """
+    # get OBJECTIVE
+    if args.objective:
+        OBJECTIVE = args.objective
+    elif os.path.exists(os.path.join(current_directory, "objective.txt")):
+        with open(os.path.join(current_directory, "objective.txt")) as f:
+            OBJECTIVE = f.read()
+    assert OBJECTIVE, "OBJECTIVE missing"
+
     print_colored_text(f"****Objective****", color="green")
     print_char_by_char(OBJECTIVE, 0.00001, 10)
 
-    # Create the tasks
-    print_colored_text("*****Working on tasks*****", "red")
-    print_colored_text(" - Creating initial tasks", "yellow")
-    task_agent_output = code_tasks_initializer_agent(OBJECTIVE)
-    print_colored_text(" - Reviewing and refactoring tasks to fit agents", "yellow")
-    task_agent_output = code_tasks_refactor_agent(OBJECTIVE, task_agent_output)
-    print_colored_text(" - Adding relevant technical details to the tasks", "yellow")
-    task_agent_output = code_tasks_details_agent(OBJECTIVE, task_agent_output)
-    print_colored_text(" - Adding necessary context to the tasks", "yellow")
-    task_agent_output = code_tasks_context_agent(OBJECTIVE, task_agent_output)
-    print()
+    if args.cont:
+        print_colored_text(
+            f"****Continuing tasks from previous session****", color="red"
+        )
+        with open(os.path.join(current_directory, ".task_list.json")) as f:
+            task_json = json.load(f)
 
-    print_colored_text("*****TASKS*****", "green")
-    print_char_by_char(task_agent_output, 0.00000001, 10)
+        print_colored_text("*****TASKS*****", "green")
+        pretty_task_json = json.dumps(task_json, indent=4)
+        print_char_by_char(pretty_task_json, 0.00000001, 10)
 
-    # Task list
-    task_json = json.loads(task_agent_output)
+    else:
+        # Create the tasks
+        print_colored_text("*****Working on tasks*****", "red")
+        print_colored_text(" - Creating initial tasks", "yellow")
+        task_agent_output = code_tasks_initializer_agent(OBJECTIVE)
+        print_colored_text(" - Reviewing and refactoring tasks to fit agents", "yellow")
+        task_agent_output = code_tasks_refactor_agent(OBJECTIVE, task_agent_output)
+        print_colored_text(
+            " - Adding relevant technical details to the tasks", "yellow"
+        )
+        task_agent_output = code_tasks_details_agent(OBJECTIVE, task_agent_output)
+        print_colored_text(" - Adding necessary context to the tasks", "yellow")
+        task_agent_output = code_tasks_context_agent(OBJECTIVE, task_agent_output)
+        print()
+
+        print_colored_text("*****TASKS*****", "green")
+        print_char_by_char(task_agent_output, 0.00000001, 10)
+
+        # Task list
+        task_json = json.loads(task_agent_output)
+
+        # store finalized tasks (for later --continue sessions)
+        with open(os.path.join(current_directory, ".task_list.json"), "w") as f:
+            json.dump(task_json, f)
 
     embeddings = Embeddings(current_directory)
 
@@ -176,13 +195,14 @@ def main_function(_args):
         # allow a ton of automation when working on large projects.
         #
         # Get user input as a feedback to the task_description
-        # print_colored_text("*****TASK FEEDBACK*****", "yellow")
-        # user_input = input("\n>:")
-        # task_description = task_human_input_agent(task_description, user_input)
-        # if task_description == "<IGNORE_TASK>":
-        #     continue
-        # print_colored_text("*****IMPROVED TASK*****", "green")
-        # print_char_by_char(task_description)
+        print_colored_text("*****TASK FEEDBACK*****", "yellow")
+        user_input = input("\n>:")
+        if user_input != "":
+            task_description = task_human_input_agent(task_description, user_input)
+            if task_description == "<IGNORE_TASK>":
+                continue
+            print_colored_text("*****IMPROVED TASK*****", "green")
+            print_char_by_char(task_description)
 
         # Assign the task to an agent
         task_assigner_recommendation = task_assigner_recommendation_agent(
@@ -216,6 +236,18 @@ def main_function(_args):
                 embeddings.compute_repository_embeddings()
                 relevant_chunks = embeddings.get_relevant_code_chunks(
                     task_description, task_isolated_context
+                )
+                print_char_by_char(
+                    str(
+                        [
+                            {
+                                "file": s["filePath"],
+                                "(form_line,to_line)": s["(from_line,to_line)"],
+                                "relevance_score": s["relevance_score"],
+                            }
+                            for s in relevant_chunks
+                        ]
+                    )
                 )
 
                 current_directory_files = execute_command_string("find . -type f")
@@ -262,7 +294,7 @@ def main_function(_args):
                 print_char_by_char(file_management_output)
 
                 # Split the code into chunks and get the relevance scores for each chunk
-                code_chunks = split_code_into_chunks(file_path, 80)
+                code_chunks = split_code_into_chunks(file_path)
                 print_colored_text("*****ANALYZING EXISTING CODE*****", "yellow")
                 relevance_scores = []
                 for chunk in code_chunks:
@@ -285,7 +317,7 @@ def main_function(_args):
                 selected_chunk = ranked_results[0]
                 top_score = selected_chunk["relevance_score"]
                 relevant_chunks = [
-                    r for r in ranked_results if r["relevance_score"] >= 0.7 * top_score
+                    r for r in ranked_results if r["relevance_score"] >= 0.9 * top_score
                 ]
                 code_snipplet = {
                     "code": selected_chunk["code"],
@@ -316,13 +348,19 @@ def main_function(_args):
 
                 print_colored_text("*****PATCHING CODE*****", "green")
                 print(patch)
-                response = []
-                response += execute_command_string(f"echo '{patch}' > .tmp.patch")
-                response += execute_command_string(
-                    f"sed 's/\\\\n/\\\n/g' .tmp.patch > .tmp.sed"
-                )
-                response += execute_command_string(f"patch --backup < .tmp.sed")
-                response += execute_command_string(f"rm .tmp.*")
+                command = f"echo '{patch}' | sed 's/\\\\n/\\\n/g' | patch --backup --suffix task_id_{task['id']}"
+                response = execute_command_string(command)
+
+                # response = []
+                # response.append(execute_command_string(f"echo '{patch}' > .tmp.patch"))
+                # response.append(execute_command_string(
+                #     f"sed 's/\\\\n/\\\n/g' .tmp.patch > .tmp.sed"
+                # ))
+                # response.append(execute_command_string(
+                #     # f'patch --backup --suffix task_id_{task["id"]} < .tmp.sed'
+                #     f'patch --backup < .tmp.sed'
+                # ))
+                # response.append(execute_command_string(f"rm .tmp.*"))
                 logger.debug(f"Patching command returned:{response}")
 
         print_colored_text("*****TASK COMPLETED*****", "yellow")
@@ -336,12 +374,15 @@ def parse_args(argv):
         description="AI-based Programming Assistant", add_help=False
     )
     parser.add_argument(
-        "--help", action="store_true", help="Display short usage information"
+        "-h", "--help", action="store_true", help="Display short usage information"
     )
     parser.add_argument(
         "objective",
         nargs="?",
         help="Objective to complete by the assistant",
+    )
+    parser.add_argument(
+        "-C", "--cont", action="store_true", help="Continue previous task list"
     )
     args = parser.parse_args(argv)
     return args
@@ -349,8 +390,12 @@ def parse_args(argv):
 
 def show_usage():
     usage = """ 
-    Usage: python babycoder.py [objective]
+    Usage: python babycoder.py [objective] [--cont]
     objective: Objective to complete by the assistant
+
+    options:
+      -h, --help: Display short usage information
+      -C, --cont: Continue previous task list
 
     Example: python babycoder.py "Create a function to add two numbers"
     """

@@ -198,18 +198,22 @@ def task_assigner_recommendation_agent(objective: str, task: str) -> str:
     The current task is: \n```task\n{task}\n```
     
     The available agents are:
-    1. code_writer_agent: Responsible for writing code based on the task description.
-    2. code_refactor_agent: Responsible for editing existing code.
-    3. command_executor_agent: Responsible for executing commands and handling file operations, such as creating, moving, or deleting files.
+    - code_writer_agent: Responsible for writing code based on the task description.
+    - code_refactor_agent: Responsible for editing existing code.
+    - command_executor_agent: Responsible for executing commands and handling file operations, such as creating, moving, or deleting files.
 
-    When analyzing the task, consider the following tips:
-    - Pay attention to keywords in the task description that indicate the type of action required, such as "write", "edit", "run", "create", "move", or "delete".
+    Only analyze the current task (part within the ```task\n(text description of current task)``` and consider the following tips:
+    - Main criteria to select agent is the beginning of the current task ('Run a command to...', 'Write a code to...', 'Edit the code to...', 'Edit the existing code to...'). THIS IS THE MOST IMPORTANT PART!
+    - Pay attention to keywords in the current task that indicate the type of action required, such as "write", "edit", "run", "create", "move", or "delete" (THIS IS THE MOST IMPORTANT PART)
     - Keep the overall objective in mind, as it can help you understand the context of the task and guide your choice of agent.
-    - If the task involves writing new code or adding new functionality, consider using the code_writer_agent.
-    - If the task involves modifying or optimizing existing code, consider using the code_refactor_agent.
-    - If the task involves file operations, command execution, or running a script, consider using the command_executor_agent.
+    - If the current task involves writing new code or adding new functionality, consider using the code_writer_agent.
+    - If the current task involves modifying or optimizing existing code, consider using the code_refactor_agent.
+    - If the current task involves file operations, command execution, or running a script, consider using the command_executor_agent (Note: do not use this agent to write or edit code!).
 
-    Based on the task and overall objective, suggest the most appropriate agent to work on the task. """
+    
+    Based on the task and overall objective, suggest the most appropriate agent to work on the task. 
+    Let's think this trough step by step, generate ranked list of agents and their relevance scores (in %) and respond with this ranked list, starting with highest relevance score.
+    RESPOND ONLY WITH THE RANKED LIST:" """
     return openai_call(
         prompt,
         model=OPENAI_API_MODEL_SIMPLE,
@@ -224,12 +228,12 @@ def task_assigner_agent(objective: str, task: str, recommendation: str) -> str:
     The overall objective is: \n```objective\n{objective}\n```
     The current task is: \n```task\n{task}\n```
 
-    Use this recommendation to guide you: {recommendation}
+    Use this recommendation to guide you: \n```\n{recommendation}\n```
         
     The available agents are:
-    1. code_writer_agent: Responsible for writing code based on the task description.
-    2. code_refactor_agent: Responsible for editing existing code.
-    2. command_executor_agent: Responsible for executing commands and handling file operations, such as creating, moving, or deleting files.
+    - code_writer_agent: Responsible for writing code based on the task description.
+    - code_refactor_agent: Responsible for editing existing code.
+    - command_executor_agent: Responsible for executing commands and handling file operations, such as creating, moving, or deleting files.
 
     Please consider the task description and the overall objective when choosing the most appropriate agent. Keep in mind that creating a file and writing code are different tasks. If the task involves creating a file, like "calculator.py" but does not mention writing any code inside it, the command_executor_agent should be used for this purpose. The code_writer_agent should only be used when the task requires writing or adding code to a file. The code_refactor_agent should only be used when the task requires modifying existing code.
     
@@ -377,7 +381,7 @@ def task_human_input_agent(task: str, human_feedback: str) -> str:
 
     The human feedback is:\n```feedback\n{human_feedback}\n```
 
-    If the human feedback is empty, return the task as is. If the human feedback is saying to ignore the task, return the following string: <IGNORE_TASK>
+    If the human feedback is empty, return the task as is and nothing else. If the human feedback is saying to ignore the task, return the following string: <IGNORE_TASK>
 
     Note that your output will replace the existing task, so make sure that your output is a valid task that starts with one of the required phrases ('Run a command to...', 'Write code to...', 'Edit existing code to...').
     

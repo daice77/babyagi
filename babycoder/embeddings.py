@@ -125,25 +125,30 @@ class Embeddings:
                 ),
             )
 
-            df = pd.read_csv(
-                os.path.join(
-                    self.workspace_path,
-                    "playground_data",
-                    "repository_info_current_chunk.csv",
-                )
-            )
-            df = df.set_index(["filePath", "lineCoverage"])
-            self.df = df
-            context_embeddings = self.compute_doc_embeddings(df)
-            self.save_doc_embeddings_to_csv(
-                context_embeddings,
-                df,
-                os.path.join(
-                    self.workspace_path, "playground_data", "doc_embeddings.csv"
-                ),
-            )
 
             if info_and_last_file["last_file_processed"] is None:
+                # we are done - all files processed
+                # now update and generate doc embeddings
+                df = pd.read_csv(
+                    os.path.join(
+                        self.workspace_path,
+                        "playground_data",
+                        "repository_info.csv",
+                    )
+                )
+                df_changed = df[df["filePath"].isin(compare["changed"])]
+                df_changed = df_changed.set_index(["filePath", "lineCoverage"])
+                df = df.set_index(["filePath", "lineCoverage"])
+                self.df = df
+                context_embeddings = self.compute_doc_embeddings(df_changed)
+                self.save_doc_embeddings_to_csv(
+                    context_embeddings,
+                    df_changed,
+                    os.path.join(
+                        self.workspace_path, "playground_data", "doc_embeddings.csv"
+                    ),
+                )
+                # stop (the while true loop)
                 break
 
         persist_checksums(
@@ -243,14 +248,14 @@ class Embeddings:
                     last_file_processed = file_path
                 else:
                     if file_path in ignore_files:
-                        logger.info(
+                        logger.debug(
                             f"Skipping file {file_path} - in list of unchanged files"
                         )
                     else:
-                        logger.info(f"Skipping file {file_path} - already processed")
+                        logger.debug(f"Skipping file {file_path} - already processed")
 
             else:
-                logger.info(
+                logger.debug(
                     f"Last processed file {file_path}, skipping rest because max token count exceeded ({tokens_count} > {MAX_TOKENS_EMBEDDINGS_MODEL}))"
                 )
                 return {"info": info, "last_file_processed": last_file_processed}
@@ -320,19 +325,20 @@ class Embeddings:
                 query, self.document_embeddings
             )
         )
+        max_score = most_relevant_document_sections[0][0]
         selected_chunks = []
         for score, file_and_line in most_relevant_document_sections:
             try:
-                i = (file_and_line[0], file_and_line[1])
-                if i in self.df.index:
-                    relevant_chunk = self.df.loc[i].copy()
-                    relevant_chunk = relevant_chunk.reset_index()
-                    if score > 0.8:
+                file_path = file_and_line[0]
+                line_coverage = file_and_line[1]
+                if (file_path, line_coverage) in self.df.index:
+                    relevant_chunk = self.df.loc[(file_path, line_coverage)]
+                    if score > 0.9 * max_score:
                         selected_chunks.append(
                             {
                                 "relevance_score": score,
-                                "filePath": relevant_chunk["filePath"],
-                                "(from_line,to_line)": relevant_chunk["lineCoverage"],
+                                "filePath": file_path,
+                                "(from_line,to_line)": line_coverage,
                                 "content": relevant_chunk["content"],
                             }
                         )
@@ -375,6 +381,7 @@ class Embeddings:
                 print(
                     f"Error calling OpenAI embeddings. Retrying {openai_calls_retried} of {self.max_openai_calls_retries}..."
                 )
+                time.sleep(1)
                 return self.get_embedding(text, model)
 
     def get_doc_embedding(self, text: str) -> list[float]:

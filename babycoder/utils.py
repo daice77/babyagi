@@ -255,10 +255,32 @@ def openai_call(
                 print(
                     f"Error calling OpenAI. Retrying {openai_calls_retried} of {max_openai_calls_retries}..."
                 )
+                time.sleep(1)
                 return openai_call(prompt, model, temperature, max_tokens)
             else:
                 # re-raise the exception
                 raise e
+
+
+def strip_prefix_from_path(path: str, prefix: str) -> str:
+    """ strip_prefix_from_path(path: str, prefix: str) -> str Removes a specified prefix from a given path string if it starts with the prefix.
+
+    Parameters
+    path : str
+        The input path string to be stripped.
+    prefix : str
+        The prefix to be removed from the path string if it exists.
+
+    Returns
+    str
+        The modified path string with the prefix removed, or the unchanged path if the prefix did not exist.
+
+
+    """
+    if path.startswith(prefix):
+        stripped_path = path[len(prefix):]
+        return stripped_path
+    return path
 
 
 def execute_command_json(json_string: str) -> str:
@@ -302,8 +324,10 @@ def execute_command_string(command_string: str) -> str:
         The stdout (or stderr) outputs as a single string.
     """
     try:
+        time.sleep(1)
         process = subprocess.Popen(
             command_string,
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -382,7 +406,7 @@ def refactor_code(
 
 
 def split_code_into_chunks(
-    file_path: str, chunk_size: int = 50
+    file_path: str, chunk_size: int | None = None
 ) -> List[Dict[str, Union[int, str]]]:
     """
     Split the given code into chunks, each containing at most max_lines lines of code.
@@ -392,7 +416,7 @@ def split_code_into_chunks(
     code : str
         The code to split.
     max_lines : int, optional
-        The maximum number of lines of code per chunk. Default is 20.
+        The maximum number of lines of code per chunk. Default is to read line by line until token limit is reached (2000).
 
     Returns
     -------
@@ -404,16 +428,45 @@ def split_code_into_chunks(
     with open(full_path, "r", encoding="utf-8") as f:
         lines = f.readlines()
 
-    chunks = []
-    for i in range(0, len(lines), chunk_size):
-        start_line = i + 1
-        end_line = min(i + chunk_size, len(lines))
-        chunk = {
-            "start_line": start_line,
-            "end_line": end_line,
-            "code": "".join(lines[i:end_line]),
-        }
-        chunks.append(chunk)
+    total_lines = len(lines)
+    # total_length = sum(len(line) for line in lines)
+    # average_length = total_length / total_lines if total_lines > 0 else 0
+
+    if chunk_size is None:
+        # embeddings model token size: 8196, use max 1/4 of that (2000), assume
+        chunks = []
+        max_token_per_chunk = 2000
+        tokens = 0
+        end_line = 0
+        start_line = 0
+        while start_line < total_lines:
+            # read line by line until max_token_per_chunk is reached (or all lines are processed)
+            while (tokens < max_token_per_chunk) and (end_line < total_lines):
+                current_line = lines[end_line]
+                tokens += count_tokens(current_line, encoding_name="cl100k_base")
+                end_line += 1
+
+            chunk = {
+                "start_line": start_line,
+                "end_line": end_line,
+                "code": "".join(lines[start_line:end_line]),
+            }
+            chunks.append(chunk)
+            end_line = end_line +1 
+            start_line = end_line
+            tokens = max(0, tokens - max_token_per_chunk)
+    else:
+        chunks = []
+        for i in range(0, len(lines), chunk_size):
+            start_line = i + 1
+            end_line = min(i + chunk_size, len(lines))
+            chunk = {
+                "start_line": start_line,
+                "end_line": end_line,
+                "code": "".join(lines[i:end_line]),
+            }
+            chunks.append(chunk)
+
     return chunks
 
 
